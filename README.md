@@ -350,7 +350,7 @@ The row 2 dropdown options are defined in `BUILDER_DROPDOWN_OPTIONS`. If the wor
 
 ## Contributing
 
-This script is maintained by the Tree of Life Sample Management team at the Wellcome Sanger Institute. For bugs, feature requests, or questions, please open a GitHub Issue on this repository.
+This script was created by Lyndall Pereira and is maintained by the Tree of Life Sample Management team at the Wellcome Sanger Institute. For bugs, feature requests, or questions, please open a GitHub Issue on this repository.
 
 ---
 
@@ -359,9 +359,9 @@ This script is maintained by the Tree of Life Sample Management team at the Well
 | Version | Date | Notes |
 |---------|------|-------|
 | 0.4 | 2026-05 | Live SOP fetch, catalogue checker, load from catalogue, shared folder output, two SOP doc versions, partner SOP tab, green/blue/white colour scheme |
-| 0.3 | 2026-04 | Column reordering, [ignore] prefix, rich catalogue storage, date CF only |
-| 0.2 | 2026-03 | Hidden columns, SOP generation, colour-coded headers |
-| 0.1 | 2026-02 | Initial version — basic manifest generation |
+| 0.3 | 2026-05 | Column reordering, [ignore] prefix, rich catalogue storage, date CF only |
+| 0.2 | 2026-04 | Hidden columns, SOP generation, colour-coded headers |
+| 0.1 | 2026-04 | Initial version — basic manifest generation |
 
 ---
 
