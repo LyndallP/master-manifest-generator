@@ -92,7 +92,7 @@ const OUTPUT_FOLDER_ID = '1pHO9F18QAF96UQjpNUN23L7WUX1XNFfc';
 // ─── Colours ──────────────────────────────────────────────────────────────────
 // Single source of truth — changing these updates both sheet headers and SOP highlights
 
-const COLOUR_MANDATORY      = '#38761D';  // Green       — mandatory header
+const COLOUR_MANDATORY      = '#6AA84F';  // Medium green — mandatory header
 const COLOUR_MANDATORY_CELL = '#D9EAD3';  // Very light green  — mandatory data cells
 const COLOUR_OPTIONAL       = '#3C78D8';  // Medium blue — reserved for future use (e.g. Option B sidebar)
 const COLOUR_OPTIONAL_LIGHT = '#A4C2F4';  // Lighter blue — "visible and optional" header
@@ -101,6 +101,7 @@ const COLOUR_HIDDEN_BG      = '#FFFFFF';  // White bg    — hidden columns
 const COLOUR_HIDDEN_CELL    = '#F8F8F8';  // Near-white  — hidden data cells
 const COLOUR_HEADER_TEXT    = '#000000';  // Black text  — all header cells
 const COLOUR_GRID_LINE      = '#CCCCCC';  // Grey        — cell borders
+const COLOUR_EXCLUDED_CELL  = '#EFEFEF';  // Light grey  — excluded columns in catalogue row
 
 // ─── Row 2 selection values → behaviour ──────────────────────────────────────
 // Mandatory (green header) triggers — any of these in row 2 → green/mandatory
@@ -1126,7 +1127,8 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
  *   Col B+ = full selection string for included columns (e.g. "Include,
  *            visible and mandatory"), empty string for excluded/unset.
  *            Each cell is colour-coded to match the manifest headers:
- *            orange (mandatory), light blue (optional), white (hidden).
+ *            green (mandatory), light blue (optional), white (hidden),
+ *            light grey (excluded).
  *
  * This richer format (vs old TRUE/FALSE checkboxes) allows loadFromCatalogue()
  * to restore the exact mandatory/optional/hidden nuance when pre-populating
@@ -1170,6 +1172,13 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   const targetRange = builder.getRange(insertRow, 1, 1, lastCol);
   targetRange.setValues([rowValues]);
 
+  // Row-wide formatting: compact font, wrapped text, border around the full row
+  targetRange
+    .setFontSize(8)
+    .setWrap(true)
+    .setBorder(true, true, true, true, null, null,
+      '#000000', SpreadsheetApp.BorderStyle.SOLID);
+
   // Col A: yellow to flag as new/pending SM review
   const nameCell = builder.getRange(insertRow, 1);
   nameCell.setBackground('#FFF9C4').setFontWeight('bold');
@@ -1182,10 +1191,13 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   //   Green      = mandatory (any mandatory trigger)
   //   Light blue = optional
   //   White      = hidden
-  //   No fill    = excluded/blank
+  //   Light grey = excluded/blank
   for (let col = 2; col <= lastCol; col++) {
     const val = rowValues[col - 1];
-    if (!val) continue;
+    if (!val) {
+      builder.getRange(insertRow, col).setBackground(COLOUR_EXCLUDED_CELL);
+      continue;
+    }
     const selNorm = String(val).toLowerCase();
     let bg;
     if      (selNorm.includes('hidden'))   bg = COLOUR_HIDDEN_BG;

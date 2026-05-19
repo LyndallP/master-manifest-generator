@@ -89,8 +89,8 @@ const MANIFEST_DATA_ROWS = 96;
 Colours are defined as a single source of truth — changing them here updates both the manifest sheet headers and the SOP document field name highlights:
 
 ```javascript
-const COLOUR_MANDATORY      = '#38761D';  // Green       — mandatory column headers
-const COLOUR_MANDATORY_CELL = '#D9EAD3';  // Light green — mandatory data cell backgrounds
+const COLOUR_MANDATORY      = '#6AA84F';  // Medium green — mandatory column headers
+const COLOUR_MANDATORY_CELL = '#D9EAD3';  // Light green  — mandatory data cell backgrounds
 const COLOUR_OPTIONAL_LIGHT = '#A4C2F4';  // Light blue  — optional column headers
 const COLOUR_OPTIONAL_CELL  = '#D9E8FB';  // Light blue  — optional data cell backgrounds
 const COLOUR_HIDDEN_BG      = '#FFFFFF';  // White       — hidden column headers
@@ -226,7 +226,8 @@ Both documents follow the format of the master SOP:
 The catalogue section (rows 13+ of the builder sheet) records every manifest that has been generated. Each row contains:
 
 - **Col A** — manifest name and version (bold, yellow background when newly added, with a cell note for SM review)
-- **Cols B+** — full selection string for included columns (e.g. `Include, visible and mandatory`), empty for excluded columns; cells colour-coded green/blue/white to match the manifest headers
+- **Cols B+** — full selection string for included columns (e.g. `Include, visible and mandatory`), empty for excluded columns; cells colour-coded to match the manifest headers (green/blue/white for included, light grey for excluded)
+- **Row formatting** — font size 8, text wrap enabled, solid border around the full row
 
 > **Backwards compatibility:** Older catalogue rows using `TRUE`/`FALSE` checkboxes are still understood by both the catalogue checker and the load-from-catalogue function.
 
@@ -359,6 +360,7 @@ This script was created by Lyndall Pereira and is maintained by the Tree of Life
 
 | Version | Date | Notes |
 |---------|------|-------|
+| 0.6 | 2026-05 | Lighter mandatory green header; catalogue row gains border, size-8 font, wrap, light grey excluded cells |
 | 0.5 | 2026-05 | Sync SOP comments to builder headers (new menu item) |
 | 0.4 | 2026-05 | Live SOP fetch, catalogue checker, load from catalogue, shared folder output, two SOP doc versions, partner SOP tab, green/blue/white colour scheme |
 | 0.3 | 2026-05 | Column reordering, [ignore] prefix, rich catalogue storage, date CF only |
