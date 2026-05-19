@@ -144,9 +144,10 @@ After reloading the sheet, the **📋 ToL Manifest Tools** menu contains:
 |-----------|----------|-------------|
 | 🔍 Check catalogue for identical manifest | `checkCatalogue()` | Compares the current row 2 selections against all catalogue entries. Reports exact matches (same columns + same mandatory/optional/hidden status) and near matches (same columns, different nuance) |
 | 📂 Load from catalogue into row 2 | `loadFromCatalogue()` | Shows a numbered list of catalogue entries; the user picks one and row 2 is pre-populated with that manifest's selections. The user can then adjust before generating |
+| 🔄 Sync SOP comments to builder headers | `syncSopCommentsToBuilder()` | Fetches the latest SOP descriptions from the master SOP Doc and writes them as cell comments on the row 1 column headers of the builder sheet. Run this whenever the SOP source document is updated — no generation needed |
 | Generate manifest + SOP → ▶ Run generator | `generateManifest()` | Runs the full generation pipeline (see [What Gets Generated](#what-gets-generated)) |
 
-> **Why is Generate inside a submenu?** To prevent accidental triggering — generation creates and saves files to Google Drive and cannot be undone easily. The catalogue functions are at the top level for quick access.
+> **Why is Generate inside a submenu?** To prevent accidental triggering — generation creates and saves files to Google Drive and cannot be undone easily. The other functions are at the top level for quick access.
 
 ---
 
@@ -358,6 +359,7 @@ This script was created by Lyndall Pereira and is maintained by the Tree of Life
 
 | Version | Date | Notes |
 |---------|------|-------|
+| 0.5 | 2026-05 | Sync SOP comments to builder headers (new menu item) |
 | 0.4 | 2026-05 | Live SOP fetch, catalogue checker, load from catalogue, shared folder output, two SOP doc versions, partner SOP tab, green/blue/white colour scheme |
 | 0.3 | 2026-05 | Column reordering, [ignore] prefix, rich catalogue storage, date CF only |
 | 0.2 | 2026-04 | Hidden columns, SOP generation, colour-coded headers |

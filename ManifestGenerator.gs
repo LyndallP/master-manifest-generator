@@ -20,6 +20,7 @@
  * MENU (📋 ToL Manifest Tools):
  *   • 🔍 Check catalogue for identical manifest  → checkCatalogue()
  *   • 📂 Load from catalogue into row 2          → loadFromCatalogue()
+ *   • 🔄 Sync SOP comments to builder headers    → syncSopCommentsToBuilder()
  *   • Generate manifest + SOP > ▶ Run generator  → generateManifest()
  *
  * BUILDER SHEET STRUCTURE (all_manifest_builder_v1.0):
@@ -618,6 +619,54 @@ function loadFromCatalogue() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// MAIN: syncSopCommentsToBuilder()
+// Fetches the latest SOP descriptions from the master SOP Google Doc and writes
+// them as cell comments on the row 1 column headers of the builder sheet
+// (all_manifest_builder_v1.0). This keeps the builder sheet up to date whenever
+// the SOP source document is edited, without needing to run a full generation.
+// Called from the menu: 📋 ToL Manifest Tools > 🔄 Sync SOP comments to builder headers
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function syncSopCommentsToBuilder() {
+  const ss      = SpreadsheetApp.getActiveSpreadsheet();
+  const builder = ss.getSheetByName(BUILDER_SHEET_NAME);
+  if (!builder) { alert_(`Sheet "${BUILDER_SHEET_NAME}" not found.`); return; }
+
+  // Fetch latest SOP descriptions — hard-fails if Doc is inaccessible or malformed
+  let sopComments;
+  try {
+    sopComments = fetchSopComments_();
+  } catch (e) {
+    alert_(`⚠️ SOP Sync Failed\n\n${e.message}`); return;
+  }
+
+  // Apply comments to every named header cell in row 1 (skip col 1 = label column)
+  const lastCol = builder.getLastColumn();
+  const row1    = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
+  let updated = 0;
+  let missing  = 0;
+
+  for (let col = 2; col <= lastCol; col++) {
+    const colName = String(row1[col - 1] || '').trim();
+    if (!colName) continue;
+    if (sopComments[colName]) {
+      builder.getRange(ROW_PROJECT_NAME, col).setComment(sopComments[colName]);
+      updated++;
+    } else {
+      missing++;
+    }
+  }
+
+  alert_(
+    `✅ SOP comments synced to builder headers.\n\n` +
+    `${updated} column(s) updated with the latest SOP descriptions.\n` +
+    (missing > 0
+      ? `${missing} column(s) had no matching SOP entry — their comments were left unchanged.`
+      : `All columns matched.`)
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Helper: applyBuilderDropdowns_(builder)
 // Applies the five-option dropdown validation list to every column in row 2
 // of the builder sheet. Runs automatically at the start of generateManifest()
@@ -1191,9 +1240,10 @@ function alert_(msg) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Menu: onOpen()
 // Runs automatically when the spreadsheet is opened. Adds the
-// '📋 ToL Manifest Tools' menu with three items:
+// '📋 ToL Manifest Tools' menu with four items:
 //   • 🔍 Check catalogue for identical manifest  (top-level, easy access)
 //   • 📂 Load from catalogue into row 2          (top-level, easy access)
+//   • 🔄 Sync SOP comments to builder headers    (top-level — run after SOP edits)
 //   • Generate manifest + SOP > ▶ Run generator  (in submenu — prevents
 //     accidental triggering of the full generation pipeline)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1201,11 +1251,12 @@ function alert_(msg) {
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
 
-  // Top-level menu: catalogue checker is immediately accessible
+  // Top-level menu: catalogue and SOP sync are immediately accessible
   // Generate manifest lives in a submenu so it is harder to trigger accidentally
   ui.createMenu('📋 ToL Manifest Tools')
     .addItem('🔍 Check catalogue for identical manifest', 'checkCatalogue')
     .addItem('📂 Load from catalogue into row 2', 'loadFromCatalogue')
+    .addItem('🔄 Sync SOP comments to builder headers', 'syncSopCommentsToBuilder')
     .addSeparator()
     .addSubMenu(
       ui.createMenu('Generate manifest + SOP')
