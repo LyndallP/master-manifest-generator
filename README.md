@@ -172,7 +172,7 @@ Running **▶ Run generator** triggers a 16-step pipeline:
 8. **Column ordering applied** — columns with order numbers in row 3 are placed first; remaining columns follow in natural order
 9. **Manifest Google Sheet created** — named `ToL_Manifest_[ProjectName]_[YYYY-MM-DD]`, moved to shared folder
 10. **Header row written** — colour-coded, bold, text-wrapped, 60px tall, frozen. Hidden columns prefixed `[ignore]`
-11. **Data rows formatted** — 96 rows with light column tints, grey grid borders, dropdowns, date validation, amber missing-value highlight, alternating row stripe
+11. **Data rows formatted** — 96 rows with light column tints, grey grid borders, dropdowns, date validation, amber missing-value highlight
 12. **Hidden columns hidden** — all `Include and hidden` columns hidden in the sheet
 13. **Partner SOP tab added** — green tab inside the manifest sheet
 14. **Two SOP Google Docs created** — internal and partner-facing, both moved to shared folder
@@ -199,7 +199,6 @@ Running **▶ Run generator** triggers a 16-step pipeline:
 - **Date validation** on `DATE_OF_COLLECTION`:
   - Cells pre-formatted as Text so Excel doesn't corrupt `YYYY-MM-DD` on `.xlsx` download
   - **Muted coral** (`#D97C6C`) highlight if a non-empty cell doesn't match `YYYY-MM-DD` pattern (survives `.xlsx` export; a rejection rule would not)
-- **Alternating row stripe** — a subtle pale moss-grey (`#EEF2EF`) banded row pattern improves readability across wide manifests
 
 ### Tabs in the generated file
 - **Metadata Entry** — the data-entry manifest tab

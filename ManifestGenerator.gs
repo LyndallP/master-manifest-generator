@@ -351,17 +351,10 @@ function generateManifest() {
     }
   });
 
-  // Row heights + subtle alternating stripe (applied after column tints
-  // so it blends as a slight darkening rather than overriding the tint)
+  // Row heights for data rows
   for (let r = dataStart; r <= dataEnd; r++) {
     manifest.setRowHeight(r, 21);
   }
-  // Apply alternating stripe to even rows — setBackground on individual ranges
-  // would override the column tint; instead use a banded range which layers on top
-  const banding = manifest.getRange(dataStart, 1, MANIFEST_DATA_ROWS, numCols)
-    .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
-  banding.setFirstRowColor(null);           // odd rows: no override (keep column tint)
-  banding.setSecondRowColor(COLOUR_ROW_ALT); // even rows: subtle pale moss stripe
 
   // ── Step 12: Hide hidden columns ──────────────────────────────────────────
   const hiddenCols = columns
