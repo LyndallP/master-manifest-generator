@@ -90,27 +90,35 @@ const SOP_DOC_ID = '10WMIZ9GuB0hj5pBzFkz1U2V3_KwIFH-3cAud6h3-Gow';
 const OUTPUT_FOLDER_ID = '1pHO9F18QAF96UQjpNUN23L7WUX1XNFfc';
 
 // ─── Colours ──────────────────────────────────────────────────────────────────
-// Single source of truth — changing these updates both sheet headers and SOP highlights
+// Single source of truth — changing these updates both sheet headers and SOP highlights.
+// Palette: deep teal/sage family for biodiversity genomics manifests.
+// Dark = must fill | Light = supplementary | Amber = missing required | Coral = error
+// Avoids red/green error/success semantics; accessible for colourblind users.
 
-const COLOUR_MANDATORY      = '#6AA84F';  // Medium green — mandatory header
-const COLOUR_MANDATORY_CELL = '#D9EAD3';  // Very light green  — mandatory data cells
-const COLOUR_OPTIONAL       = '#3C78D8';  // Medium blue — reserved for future use (e.g. Option B sidebar)
-const COLOUR_OPTIONAL_LIGHT = '#A4C2F4';  // Lighter blue — "visible and optional" header
-const COLOUR_OPTIONAL_CELL  = '#D9E8FB';  // Very light blue — optional data cells
-const COLOUR_HIDDEN_BG      = '#FFFFFF';  // White bg    — hidden columns
-const COLOUR_HIDDEN_CELL    = '#F8F8F8';  // Near-white  — hidden data cells
-const COLOUR_HEADER_TEXT    = '#000000';  // Black text  — all header cells
-const COLOUR_GRID_LINE      = '#CCCCCC';  // Grey        — cell borders
-const COLOUR_EXCLUDED_CELL  = '#EFEFEF';  // Light grey  — excluded columns in catalogue row
+const COLOUR_MANDATORY        = '#355C4B';  // Deep forest teal  — mandatory headers (dark)
+const COLOUR_MANDATORY_CELL   = '#F5F8F6';  // Very pale moss    — mandatory data cells
+const COLOUR_OPTIONAL         = '#355C4B';  // (same family — see COLOUR_OPTIONAL_LIGHT)
+const COLOUR_OPTIONAL_LIGHT   = '#C8DDD3';  // Soft sage         — optional headers (light)
+const COLOUR_OPTIONAL_CELL    = '#F5F8F6';  // Very pale moss    — optional data cells
+const COLOUR_HIDDEN_BG        = '#FFFFFF';  // White             — hidden column headers
+const COLOUR_HIDDEN_CELL      = '#FAFBF9';  // Off-white         — hidden data cells
+const COLOUR_HEADER_TEXT_DARK = '#FFFFFF';  // White             — text on dark (mandatory) headers
+const COLOUR_HEADER_TEXT_LIGHT= '#1E2A24';  // Dark charcoal     — text on light (optional/hidden) headers
+const COLOUR_HEADER_TEXT      = '#1E2A24';  // Dark charcoal     — default (backwards compat)
+const COLOUR_GRID_LINE        = '#CCCCCC';  // Grey              — cell borders
+const COLOUR_MISSING_REQUIRED = '#F3D27A';  // Soft amber        — blank mandatory cell
+const COLOUR_DATE_ERROR       = '#D97C6C';  // Muted coral       — date format error
+const COLOUR_ROW_ALT          = '#EEF2EF';  // Pale moss-grey    — alternating row stripe
+const COLOUR_EXCLUDED_CELL    = '#EFEFEF';  // Light grey        — excluded columns in catalogue row
 
 // ─── Row 2 selection values → behaviour ──────────────────────────────────────
-// Mandatory (green header) triggers — any of these in row 2 → green/mandatory
+// Mandatory (deep teal header) triggers — any of these in row 2 → teal/mandatory
 const ORANGE_TRIGGERS = [
   'include and visible (mandatory)',
   'include, visible and mandatory',
   'include and visible'          // plain visible → green/mandatory if row 4 is Mandatory, else blue/optional
 ];
-// Light-blue (optional) trigger
+// Soft sage (optional) trigger
 const BLUE_TRIGGER = 'include, visible and optional';
 // Hidden trigger
 const HIDDEN_TRIGGER = 'include and hidden';
@@ -305,6 +313,9 @@ function generateManifest() {
     }
 
     manifest.getRange(1, colNum).setBackground(headerBg);
+    // Dark headers (mandatory) get white text; light headers (optional/hidden) get charcoal
+    const headerTextColour = col.isMandatory ? COLOUR_HEADER_TEXT_DARK : COLOUR_HEADER_TEXT_LIGHT;
+    manifest.getRange(1, colNum).setFontColor(headerTextColour);
     if (col.sopComment) manifest.getRange(1, colNum).setComment(col.sopComment);
 
     // Data cells — uniform light tint (no alternating rows, colour carries the meaning)
@@ -329,16 +340,31 @@ function generateManifest() {
       applyDropdown_(manifest, newSS, colNum, dataStart, dataEnd, col.name, col.dvValues);
     }
 
-    // Date: conditional formatting only (red if non-empty and wrong format)
+    // Date: conditional formatting only (coral if non-empty and wrong format)
     if (col.name === DATE_COLUMN_NAME) {
       applyDateFormatting_(manifest, colNum, dataStart, dataEnd);
     }
+
+    // Missing mandatory value: amber highlight if mandatory column cell is blank
+    if (col.isMandatory) {
+      applyMissingMandatoryHighlight_(manifest, colNum, dataStart, dataEnd);
+    }
   });
 
-  // Row heights for data rows
+  // Row heights + subtle alternating stripe (applied after column tints
+  // so it blends as a slight darkening rather than overriding the tint)
   for (let r = dataStart; r <= dataEnd; r++) {
     manifest.setRowHeight(r, 21);
   }
+  // Apply alternating stripe to even rows — setBackground on individual ranges
+  // would override the column tint; instead use a banded range which layers on top
+  const bandedRange = manifest.addBanding(
+    manifest.getRange(dataStart, 1, MANIFEST_DATA_ROWS, numCols),
+    false,  // showHeader
+    false   // showFooter
+  );
+  bandedRange.setFirstRowColor(null);           // odd rows: no override (keep column tint)
+  bandedRange.setSecondRowColor(COLOUR_ROW_ALT); // even rows: subtle pale moss stripe
 
   // ── Step 12: Hide hidden columns ──────────────────────────────────────────
   const hiddenCols = columns
@@ -710,8 +736,31 @@ function applyDateFormatting_(sheet, colNum, startRow, endRow) {
     .whenFormulaSatisfied(
       `=AND(${firstCellA1}<>"",NOT(REGEXMATCH(TEXT(${firstCellA1},"@"),"${pattern}")))`
     )
-    .setBackground('#FF4444')
-    .setFontColor('#FFFFFF')
+    .setBackground(COLOUR_DATE_ERROR)
+    .setFontColor(COLOUR_HEADER_TEXT_DARK)
+    .setRanges([range])
+    .build();
+
+  const rules = sheet.getConditionalFormatRules();
+  rules.push(cfRule);
+  sheet.setConditionalFormatRules(rules);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper: applyMissingMandatoryHighlight_(sheet, colNum, startRow, endRow)
+// Applies a conditional formatting rule to mandatory columns: if a cell is
+// blank, it is highlighted with soft amber (#F3D27A) to guide data curators.
+// This is the single most useful validation cue in a large manifest — it makes
+// missing required values immediately visible without being alarming.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function applyMissingMandatoryHighlight_(sheet, colNum, startRow, endRow) {
+  const range       = sheet.getRange(startRow, colNum, endRow - startRow + 1, 1);
+  const firstCellA1 = sheet.getRange(startRow, colNum).getA1Notation();
+
+  const cfRule = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=${firstCellA1}=""`)
+    .setBackground(COLOUR_MISSING_REQUIRED)
     .setRanges([range])
     .build();
 
@@ -969,8 +1018,8 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
   });
 
   // Colour constants linked to sheet header colours
-    const COL_MANDATORY = COLOUR_MANDATORY;   // '#38761D' green — links to manifest header colour
-  const COL_OPTIONAL  = COLOUR_OPTIONAL_LIGHT;
+  const COL_MANDATORY = COLOUR_MANDATORY;   // '#355C4B' deep forest teal — links to manifest header colour
+  const COL_OPTIONAL  = COLOUR_OPTIONAL_LIGHT;  // '#C8DDD3' soft sage
 
   const sopColumns = partnerFacing
     ? columns.filter(col => !col.isHidden)
@@ -1127,8 +1176,10 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
  *   Col B+ = full selection string for included columns (e.g. "Include,
  *            visible and mandatory"), empty string for excluded/unset.
  *            Each cell is colour-coded to match the manifest headers:
- *            green (mandatory), light blue (optional), white (hidden),
+ *            teal (mandatory), sage (optional), white (hidden),
  *            light grey (excluded).
+ *
+ * Row formatting: font size 8, text wrap, solid border around the full row.
  *
  * This richer format (vs old TRUE/FALSE checkboxes) allows loadFromCatalogue()
  * to restore the exact mandatory/optional/hidden nuance when pre-populating
@@ -1153,8 +1204,8 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   // Skip any blank separator rows between last entry and insertion point
   // (keep insertRow as-is — blank rows between entries are fine)
 
-  // Build the row values: col A = name, cols B onward = TRUE/FALSE
-  const rowValues = new Array(lastCol).fill(false);
+  // Build the row values: col A = name, cols B onward = selection strings or ''
+  const rowValues = new Array(lastCol).fill('');
   rowValues[0] = projectName;  // col A (index 0)
 
   // Store the full selection string for each column (richer than TRUE/FALSE).
@@ -1188,8 +1239,8 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   );
 
   // Cols B onward: colour-coded to match the manifest header colours
-  //   Green      = mandatory (any mandatory trigger)
-  //   Light blue = optional
+  //   Teal       = mandatory (any mandatory trigger)
+  //   Sage       = optional
   //   White      = hidden
   //   Light grey = excluded/blank
   for (let col = 2; col <= lastCol; col++) {

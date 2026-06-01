@@ -89,15 +89,22 @@ const MANIFEST_DATA_ROWS = 96;
 Colours are defined as a single source of truth — changing them here updates both the manifest sheet headers and the SOP document field name highlights:
 
 ```javascript
-const COLOUR_MANDATORY      = '#6AA84F';  // Medium green — mandatory column headers
-const COLOUR_MANDATORY_CELL = '#D9EAD3';  // Light green  — mandatory data cell backgrounds
-const COLOUR_OPTIONAL_LIGHT = '#A4C2F4';  // Light blue  — optional column headers
-const COLOUR_OPTIONAL_CELL  = '#D9E8FB';  // Light blue  — optional data cell backgrounds
-const COLOUR_HIDDEN_BG      = '#FFFFFF';  // White       — hidden column headers
-const COLOUR_HIDDEN_CELL    = '#F8F8F8';  // Near-white  — hidden data cell backgrounds
-const COLOUR_HEADER_TEXT    = '#000000';  // Black       — all header text
-const COLOUR_GRID_LINE      = '#CCCCCC';  // Grey        — cell borders
+const COLOUR_MANDATORY        = '#355C4B';  // Deep forest teal  — mandatory headers (white text)
+const COLOUR_MANDATORY_CELL   = '#F5F8F6';  // Very pale moss    — mandatory data cell backgrounds
+const COLOUR_OPTIONAL_LIGHT   = '#C8DDD3';  // Soft sage         — optional headers (charcoal text)
+const COLOUR_OPTIONAL_CELL    = '#F5F8F6';  // Very pale moss    — optional data cell backgrounds
+const COLOUR_HIDDEN_BG        = '#FFFFFF';  // White             — hidden column headers
+const COLOUR_HIDDEN_CELL      = '#FAFBF9';  // Off-white         — hidden data cell backgrounds
+const COLOUR_HEADER_TEXT_DARK = '#FFFFFF';  // White             — text on mandatory headers
+const COLOUR_HEADER_TEXT_LIGHT= '#1E2A24';  // Dark charcoal     — text on optional/hidden headers
+const COLOUR_GRID_LINE        = '#CCCCCC';  // Grey              — cell borders
+const COLOUR_MISSING_REQUIRED = '#F3D27A';  // Soft amber        — blank mandatory cell highlight
+const COLOUR_DATE_ERROR       = '#D97C6C';  // Muted coral       — date format validation error
+const COLOUR_ROW_ALT          = '#EEF2EF';  // Pale moss-grey    — alternating row stripe
+const COLOUR_EXCLUDED_CELL    = '#EFEFEF';  // Light grey        — excluded columns in catalogue row
 ```
+
+> **Palette rationale:** The deep teal/sage family was chosen specifically for biodiversity genomics manifests. It avoids red/green error/success semantics, is accessible for colourblind users, and the dark/light hierarchy (dark = must fill, light = supplementary) is more intuitive than arbitrary colour differences. The palette subtly evokes field ecology and natural history collections.
 
 ---
 
@@ -125,10 +132,10 @@ The `all_manifest_builder_v1.0` sheet is laid out as follows:
 
 | Selection | Header colour | Meaning |
 |-----------|--------------|---------|
-| `Include and visible (mandatory)` | 🟢 Green | Partner must fill this in |
-| `Include, visible and mandatory` | 🟢 Green | Partner must fill this in (alternate wording) |
-| `Include, visible and optional` | 🔵 Light blue | Partner may fill this in |
-| `Include and visible` | 🟢 Green or 🔵 Blue | If row 4 = Mandatory or WOSPI Mandatory → green; otherwise → blue |
+| `Include and visible (mandatory)` | 🟩 Deep teal (white text) | Partner must fill this in |
+| `Include, visible and mandatory` | 🟩 Deep teal (white text) | Partner must fill this in (alternate wording) |
+| `Include, visible and optional` | 🫧 Soft sage (charcoal text) | Partner may fill this in |
+| `Include and visible` | 🟩 Teal or 🫧 Sage | If row 4 = Mandatory or WOSPI Mandatory → teal; otherwise → sage |
 | `Include and hidden` | ⬜ White | Column included but hidden from partner; header prefixed `[ignore]` |
 | `Exclude` | *(not included)* | Column not in the generated manifest at all |
 
@@ -165,7 +172,7 @@ Running **▶ Run generator** triggers a 16-step pipeline:
 8. **Column ordering applied** — columns with order numbers in row 3 are placed first; remaining columns follow in natural order
 9. **Manifest Google Sheet created** — named `ToL_Manifest_[ProjectName]_[YYYY-MM-DD]`, moved to shared folder
 10. **Header row written** — colour-coded, bold, text-wrapped, 60px tall, frozen. Hidden columns prefixed `[ignore]`
-11. **Data rows formatted** — 96 rows with light column tints, grey grid borders, dropdowns, date validation
+11. **Data rows formatted** — 96 rows with light column tints, grey grid borders, dropdowns, date validation, amber missing-value highlight, alternating row stripe
 12. **Hidden columns hidden** — all `Include and hidden` columns hidden in the sheet
 13. **Partner SOP tab added** — green tab inside the manifest sheet
 14. **Two SOP Google Docs created** — internal and partner-facing, both moved to shared folder
@@ -177,21 +184,22 @@ Running **▶ Run generator** triggers a 16-step pipeline:
 ## Generated Manifest Format
 
 ### Header row
-- **Green background, black text** — mandatory columns
-- **Light blue background, black text** — optional columns
-- **White background, black text** — hidden columns (prefixed `[ignore]`, column hidden in sheet)
+- **Deep forest teal (`#355C4B`) background, white text** — mandatory columns
+- **Soft sage (`#C8DDD3`) background, dark charcoal text** — optional columns
+- **White background, dark charcoal text** — hidden columns (prefixed `[ignore]`, column hidden in sheet)
 - Text wraps; row height 60px to accommodate long field names
 - Each header cell has a **cell comment** (small triangle in corner) containing the full SOP description for that field — hover to read
 
 ### Data rows (rows 2–97)
-- Light green tint — mandatory columns
-- Light blue tint — optional columns
-- Near-white — hidden columns
+- Very pale moss tint — mandatory and optional columns
+- Off-white — hidden columns
 - Grey grid borders on all cells
 - **Dropdown validation** on fields with controlled vocabularies (e.g. `ORGANISM_PART`, `LIFESTAGE`, `SEX`, `GAL`)
+- **Missing mandatory value highlight** — blank cells in mandatory columns are highlighted **soft amber** (`#F3D27A`), making missing required values immediately visible to data curators without being alarming
 - **Date validation** on `DATE_OF_COLLECTION`:
   - Cells pre-formatted as Text so Excel doesn't corrupt `YYYY-MM-DD` on `.xlsx` download
-  - Red highlight if a non-empty cell doesn't match `YYYY-MM-DD` pattern (this survives `.xlsx` export; a rejection rule would not)
+  - **Muted coral** (`#D97C6C`) highlight if a non-empty cell doesn't match `YYYY-MM-DD` pattern (survives `.xlsx` export; a rejection rule would not)
+- **Alternating row stripe** — a subtle pale moss-grey (`#EEF2EF`) banded row pattern improves readability across wide manifests
 
 ### Tabs in the generated file
 - **Metadata Entry** — the data-entry manifest tab
@@ -207,7 +215,7 @@ Two Google Docs are created per run, both saved to the shared output folder:
 ### Internal SOP (`ToL_Internal_SOP_[name]_[date]`)
 - All columns listed including hidden ones
 - Hidden column entries are greyed and marked `[HIDDEN]` in the column letter prefix (e.g. `B [HIDDEN]. SYMBIONT: …`)
-- Field names highlighted in their manifest colour (green/blue/grey)
+- Field names highlighted in their manifest colour (teal/sage/grey)
 
 ### Partner SOP (`ToL_Partner_SOP_[name]_[date]`)
 - Hidden columns omitted entirely
@@ -226,7 +234,7 @@ Both documents follow the format of the master SOP:
 The catalogue section (rows 13+ of the builder sheet) records every manifest that has been generated. Each row contains:
 
 - **Col A** — manifest name and version (bold, yellow background when newly added, with a cell note for SM review)
-- **Cols B+** — full selection string for included columns (e.g. `Include, visible and mandatory`), empty for excluded columns; cells colour-coded to match the manifest headers (green/blue/white for included, light grey for excluded)
+- **Cols B+** — full selection string for included columns (e.g. `Include, visible and mandatory`), empty for excluded columns; cells colour-coded to match the manifest headers (teal/sage/white for included, light grey for excluded)
 - **Row formatting** — font size 8, text wrap enabled, solid border around the full row
 
 > **Backwards compatibility:** Older catalogue rows using `TRUE`/`FALSE` checkboxes are still understood by both the catalogue checker and the load-from-catalogue function.
@@ -286,9 +294,9 @@ Google Apps Script's `DocumentApp` does not support suppressing the header on th
 ### Date validation in Excel (.xlsx)
 Google Sheets data validation rejection rules are stripped when a file is downloaded as `.xlsx`. The script uses two mitigations:
 - Date cells are pre-formatted as **Text** so Excel doesn't auto-convert `YYYY-MM-DD` into a date serial number
-- A **red highlight** conditional formatting rule is applied — this does survive `.xlsx` export and will flag incorrectly formatted dates visually
+- A **muted coral highlight** conditional formatting rule is applied — this does survive `.xlsx` export and will flag incorrectly formatted dates visually
 
-Partners working in Excel will not see a rejection popup for wrong dates, but they will see the red highlighting.
+Partners working in Excel will not see a rejection popup for wrong dates, but they will see the coral highlighting.
 
 ### Dropdown lists in Excel (.xlsx)
 Dropdown validation is not preserved in `.xlsx` downloads. Partners working in Excel should refer to the Partner SOP document for the list of accepted values for controlled-vocabulary fields.
@@ -323,7 +331,8 @@ The script fetches column descriptions from the master SOP Google Doc at run-tim
 1. Edit the SOP Google Doc directly (no script changes needed)
 2. Ensure field entries remain as bullet-point list items in the format `FIELDNAME: description text`
 3. Field names must be `ALL_CAPS_WITH_UNDERSCORES` — the parser identifies them by the absence of lowercase letters before the first colon
-4. The next manifest generation will automatically use the updated descriptions
+4. Run **🔄 Sync SOP comments to builder headers** to update the comments on the builder sheet's row 1 headers immediately
+5. The next manifest generation will automatically use the updated descriptions in the generated manifest and SOP docs
 
 If the Doc structure changes significantly (e.g. bullet points replaced with a different format), the parser may return fewer than 5 entries and halt with an error. In this case, update the `fetchSopComments_()` function's parsing logic to match the new structure.
 
@@ -352,7 +361,7 @@ The row 2 dropdown options are defined in `BUILDER_DROPDOWN_OPTIONS`. If the wor
 
 ## Contributing
 
-This script was created by Lyndall Pereira and is maintained by the Tree of Life Sample Management team at the Wellcome Sanger Institute. For bugs, feature requests, or questions, please open a GitHub Issue on this repository.
+This script is maintained by the Tree of Life Sample Management team at the Wellcome Sanger Institute. For bugs, feature requests, or questions, please open a GitHub Issue on this repository.
 
 ---
 
@@ -360,12 +369,12 @@ This script was created by Lyndall Pereira and is maintained by the Tree of Life
 
 | Version | Date | Notes |
 |---------|------|-------|
-| 0.6 | 2026-05 | Lighter mandatory green header; catalogue row gains border, size-8 font, wrap, light grey excluded cells |
-| 0.5 | 2026-05 | Sync SOP comments to builder headers (new menu item) |
-| 0.4 | 2026-05 | Live SOP fetch, catalogue checker, load from catalogue, shared folder output, two SOP doc versions, partner SOP tab, green/blue/white colour scheme |
-| 0.3 | 2026-05 | Column reordering, [ignore] prefix, rich catalogue storage, date CF only |
-| 0.2 | 2026-04 | Hidden columns, SOP generation, colour-coded headers |
-| 0.1 | 2026-04 | Initial version — basic manifest generation |
+| 0.7 | 2026-06 | Teal/sage colour palette; amber missing-value highlight; alternating row stripe; muted coral date error; separate dark/light header text colours |
+| 0.6 | 2026-05 | Sync SOP comments to builder headers (new menu item); catalogue row border, font-8, wrap, light grey excluded cells |
+| 0.5 | 2026-05 | Live SOP fetch, catalogue checker, load from catalogue, shared folder output, two SOP doc versions, partner SOP tab |
+| 0.4 | 2026-04 | Column reordering, [ignore] prefix, rich catalogue storage, date CF only |
+| 0.3 | 2026-04 | Hidden columns, SOP generation, colour-coded headers |
+| 0.2 | 2026-03 | Initial version — basic manifest generation |
 
 ---
 
