@@ -358,13 +358,10 @@ function generateManifest() {
   }
   // Apply alternating stripe to even rows — setBackground on individual ranges
   // would override the column tint; instead use a banded range which layers on top
-  const bandedRange = manifest.addBanding(
-    manifest.getRange(dataStart, 1, MANIFEST_DATA_ROWS, numCols),
-    false,  // showHeader
-    false   // showFooter
-  );
-  bandedRange.setFirstRowColor(null);           // odd rows: no override (keep column tint)
-  bandedRange.setSecondRowColor(COLOUR_ROW_ALT); // even rows: subtle pale moss stripe
+  const banding = manifest.getRange(dataStart, 1, MANIFEST_DATA_ROWS, numCols)
+    .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
+  banding.setFirstRowColor(null);           // odd rows: no override (keep column tint)
+  banding.setSecondRowColor(COLOUR_ROW_ALT); // even rows: subtle pale moss stripe
 
   // ── Step 12: Hide hidden columns ──────────────────────────────────────────
   const hiddenCols = columns
