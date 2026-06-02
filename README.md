@@ -369,7 +369,8 @@ This script is maintained by the Tree of Life Sample Management team at the Well
 
 | Version | Date | Notes |
 |---------|------|-------|
-| 0.7 | 2026-06 | Teal/sage colour palette; amber missing-value highlight; alternating row stripe; muted coral date error; separate dark/light header text colours |
+| 0.8 | 2026-06 | Fix date CF false positives (remove TEXT() wrapper); auto duplicate-check before generation; white text on mandatory catalogue/SOP cells |
+| 0.7 | 2026-06 | Teal/sage colour palette; amber missing-value highlight; muted coral date error; separate dark/light header text colours |
 | 0.6 | 2026-05 | Sync SOP comments to builder headers (new menu item); catalogue row border, font-8, wrap, light grey excluded cells |
 | 0.5 | 2026-05 | Live SOP fetch, catalogue checker, load from catalogue, shared folder output, two SOP doc versions, partner SOP tab |
 | 0.4 | 2026-04 | Column reordering, [ignore] prefix, rich catalogue storage, date CF only |
