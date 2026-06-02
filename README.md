@@ -160,24 +160,25 @@ After reloading the sheet, the **📋 ToL Manifest Tools** menu contains:
 
 ## What Gets Generated
 
-Running **▶ Run generator** triggers a 16-step pipeline:
+Running **▶ Run generator** triggers a 17-step pipeline:
 
 1. **Row 2 dropdowns refreshed** — validation rules applied to all row 2 cells automatically
 2. **Project name validated** — reads cell A1; prompts if blank or still says `"Project Name and Version"`
-3. **Live SOP fetched** — opens the master SOP Google Doc and parses all bullet-point field descriptions. Generation is cancelled with an error if this fails (see [Error Messages](#error-messages))
-4. **Builder rows read** — rows 1–4 read in full
-5. **Data Validation tab read** — dropdown lists loaded for applicable columns
-6. **Column list built** — each column classified as mandatory/optional/hidden/excluded based on row 2 (with row 4 as fallback for ambiguous selections)
-7. **Missing selections checked** — if any optional columns have no selection, generation is blocked and the missing columns are listed
-8. **Column ordering applied** — columns with order numbers in row 3 are placed first; remaining columns follow in natural order
-9. **Manifest Google Sheet created** — named `ToL_Manifest_[ProjectName]_[YYYY-MM-DD]`, moved to shared folder
-10. **Header row written** — colour-coded, bold, text-wrapped, 60px tall, frozen. Hidden columns prefixed `[ignore]`
-11. **Data rows formatted** — 96 rows with light column tints, grey grid borders, dropdowns, date validation, amber missing-value highlight
-12. **Hidden columns hidden** — all `Include and hidden` columns hidden in the sheet
-13. **Partner SOP tab added** — green tab inside the manifest sheet
-14. **Two SOP Google Docs created** — internal and partner-facing, both moved to shared folder
-15. **Catalogue row appended** — new row added to the builder sheet catalogue section
-16. **Summary popup shown** — links to all three output files, plus the catalogue row number
+3. **Duplicate check** — automatically compares the current row 2 selections against the catalogue. If an identical manifest already exists, a Yes/No dialog warns the PI before proceeding — even if they skipped the manual 🔍 Check catalogue step
+4. **Live SOP fetched** — opens the master SOP Google Doc and parses all bullet-point field descriptions. Generation is cancelled with an error if this fails (see [Error Messages](#error-messages))
+5. **Remaining builder rows read** — rows 3–4 read (rows 1–2 already read for the duplicate check)
+6. **Data Validation tab read** — dropdown lists loaded for applicable columns
+7. **Column list built** — each column classified as mandatory/optional/hidden/excluded based on row 2 (with row 4 as fallback for ambiguous selections)
+8. **Missing selections checked** — if any columns have no selection, generation is blocked and the missing columns are listed
+9. **Column ordering applied** — columns with order numbers in row 3 are placed first; remaining columns follow in natural order
+10. **Manifest Google Sheet created** — named `ToL_Manifest_[ProjectName]_[YYYY-MM-DD]`, moved to shared folder
+11. **Header row written** — colour-coded, bold, text-wrapped, 60px tall, frozen. Hidden columns prefixed `[ignore]`
+12. **Data rows formatted** — 96 rows with light column tints, grey grid borders, dropdowns, date validation, amber missing-value highlight
+13. **Hidden columns hidden** — all `Include and hidden` columns hidden in the sheet
+14. **Partner SOP tab added** — green tab inside the manifest sheet
+15. **Two SOP Google Docs created** — internal and partner-facing, both moved to shared folder
+16. **Catalogue row appended** — new row added to the builder sheet catalogue section
+17. **Summary popup shown** — links to all three output files, plus the catalogue row number
 
 ---
 

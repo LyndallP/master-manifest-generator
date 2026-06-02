@@ -136,7 +136,7 @@ const BUILDER_DROPDOWN_OPTIONS = [
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN: generateManifest()
-// Orchestrates the full manifest generation pipeline (steps 1–16).
+// Orchestrates the full manifest generation pipeline (steps 1–17).
 // Called from the menu: 📋 ToL Manifest Tools > Generate manifest + SOP > ▶ Run generator
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -170,7 +170,32 @@ function generateManifest() {
     builder.getRange(PROJECT_NAME_CELL).setValue(projectName);
   }
 
-  // ── Step 3: Fetch live SOP descriptions ──────────────────────────────────
+  // ── Step 3: Check catalogue for exact duplicate before doing anything expensive ──
+  // Protects against accidental duplicate generation even if the PI skipped
+  // the manual 🔍 Check catalogue step.
+  const lastCol  = builder.getLastColumn();
+  const row1     = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
+  const row2     = builder.getRange(ROW_SELECTION,    1, 1, lastCol).getValues()[0];
+
+  const existingExact = findExactCatalogueMatches_(builder, lastCol, row1, row2);
+  if (existingExact.length > 0) {
+    const matchList = existingExact.map(m => `  • ${m}`).join('\n');
+    const ui  = SpreadsheetApp.getUi();
+    const res = ui.alert(
+      '⚠️ Identical manifest already exists',
+      `The current column selections exactly match ` +
+      `${existingExact.length === 1 ? 'this existing manifest' : 'these existing manifests'}:\n\n` +
+      `${matchList}\n\n` +
+      `Generate a new identical manifest anyway?`,
+      ui.ButtonSet.YES_NO
+    );
+    if (res !== ui.Button.YES) {
+      alert_('Generation cancelled. Use 📂 Load from catalogue to work with an existing manifest.');
+      return;
+    }
+  }
+
+  // ── Step 4: Fetch live SOP descriptions ──────────────────────────────────
   let sopComments;
   try {
     sopComments = fetchSopComments_();
@@ -178,17 +203,14 @@ function generateManifest() {
     alert_(`⚠️ SOP Sync Failed — Manifest NOT generated\n\n${e.message}`); return;
   }
 
-  // ── Step 4: Read all builder rows ────────────────────────────────────────
-  const lastCol  = builder.getLastColumn();
-  const row1     = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
-  const row2     = builder.getRange(ROW_SELECTION,    1, 1, lastCol).getValues()[0];
-  const row3     = builder.getRange(ROW_COL_ORDER,    1, 1, lastCol).getValues()[0];
-  const row4     = builder.getRange(ROW_SYSTEM_REQ,   1, 1, lastCol).getValues()[0];
+  // ── Step 5: Read remaining builder rows ───────────────────────────────────
+  const row3     = builder.getRange(ROW_COL_ORDER,  1, 1, lastCol).getValues()[0];
+  const row4     = builder.getRange(ROW_SYSTEM_REQ, 1, 1, lastCol).getValues()[0];
 
-  // ── Step 5: Read Data Validation tab ─────────────────────────────────────
+  // ── Step 6: Read Data Validation tab ─────────────────────────────────────
   const dvMap = readDataValidationMap_(dvSheet);
 
-  // ── Step 6: Build column list ─────────────────────────────────────────────
+  // ── Step 7: Build column list ─────────────────────────────────────────────
   const missingCols = [];
   const rawColumns  = [];   // before reordering
 
@@ -247,7 +269,7 @@ function generateManifest() {
     });
   }
 
-  // ── Step 7: Block on missing selections ───────────────────────────────────
+  // ── Step 8: Block on missing selections ───────────────────────────────────
   if (missingCols.length > 0) {
     const list = missingCols.slice(0, 20).join('\n  • ');
     const more = missingCols.length > 20 ? `\n  …and ${missingCols.length - 20} more.` : '';
@@ -256,7 +278,7 @@ function generateManifest() {
   }
   if (rawColumns.length === 0) { alert_('No columns selected. Please update row 2.'); return; }
 
-  // ── Step 8: Apply column ordering from row 3 ─────────────────────────────
+  // ── Step 9: Apply column ordering from row 3 ─────────────────────────────
   // Columns with an order number sort by that number first;
   // columns without (null) retain their natural left-to-right order after numbered ones.
   const numbered   = rawColumns.filter(c => c.orderNum !== null).sort((a, b) =>
@@ -265,7 +287,7 @@ function generateManifest() {
     a.naturalIdx - b.naturalIdx);
   const columns = [...numbered, ...unnumbered];
 
-  // ── Step 9: Create the Google Sheets file ────────────────────────────────
+  // ── Step 10: Create the Google Sheets file ───────────────────────────────
   const today    = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   const safeName = projectName.replace(/[\\/:*?"<>|]/g, '_');
   const baseName = `ToL_Manifest_${safeName}_${today}`;
@@ -277,7 +299,7 @@ function generateManifest() {
 
   const numCols = columns.length;
 
-  // ── Step 10: Write header row ─────────────────────────────────────────────
+  // ── Step 11: Write header row ─────────────────────────────────────────────
   // Hidden columns get "[ignore]" appended to the name
   const headerValues = columns.map(col =>
     col.isHidden ? `[ignore] ${col.name}` : col.name
@@ -330,7 +352,7 @@ function generateManifest() {
   // Column widths
   for (let i = 1; i <= numCols; i++) manifest.setColumnWidth(i, 160);
 
-  // ── Step 11: Data rows ────────────────────────────────────────────────────
+  // ── Step 12: Data rows ────────────────────────────────────────────────────
 
   columns.forEach((col, i) => {
     const colNum = i + 1;
@@ -356,25 +378,25 @@ function generateManifest() {
     manifest.setRowHeight(r, 21);
   }
 
-  // ── Step 12: Hide hidden columns ──────────────────────────────────────────
+  // ── Step 13: Hide hidden columns ──────────────────────────────────────────
   const hiddenCols = columns
     .map((col, i) => col.isHidden ? i + 1 : null)
     .filter(Boolean);
   hiddenCols.slice().reverse().forEach(c => manifest.hideColumns(c));
 
-  // ── Step 13: Add partner-facing SOP tab ───────────────────────────────────
+  // ── Step 14: Add partner-facing SOP tab ───────────────────────────────────
   addPartnerSopTab_(newSS, columns, today, sopComments, projectName);
 
-  // ── Step 14: Create two SOP Google Docs ──────────────────────────────────
+  // ── Step 15: Create two SOP Google Docs ──────────────────────────────────
   const internalDoc = createSopDoc_(baseName, columns, today, sopComments, projectName, false);
   moveToOutputFolder_(internalDoc.getId());
   const partnerDoc  = createSopDoc_(baseName, columns, today, sopComments, projectName, true);
   moveToOutputFolder_(partnerDoc.getId());
 
-  // ── Step 15: Append catalogue row to builder sheet ───────────────────────
+  // ── Step 16: Append catalogue row to builder sheet ───────────────────────
   const catRowNum = appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2);
 
-  // ── Step 16: Summary ─────────────────────────────────────────────────────
+  // ── Step 17: Summary ─────────────────────────────────────────────────────
   const sheetUrl   = newSS.getUrl();
   const internalUrl = internalDoc.getUrl();
   const partnerUrl  = partnerDoc.getUrl();
@@ -392,6 +414,59 @@ function generateManifest() {
     `Please copy this row to the master manifest catalogue when ready.\n\n` +
     `All URLs saved to Apps Script log.`
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper: findExactCatalogueMatches_(builder, lastCol, row1, row2)
+// Returns an array of catalogue entry names whose column selections exactly
+// match the current row 2. Used by generateManifest() to warn before
+// creating a duplicate, and by checkCatalogue() for its exact-match report.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function findExactCatalogueMatches_(builder, lastCol, row1, row2) {
+  // Build a normalised map of the current selections
+  const currentFull = new Map();
+  for (let col = 2; col <= lastCol; col++) {
+    const colName = String(row1[col - 1] || '').trim();
+    if (!colName) continue;
+    const sel     = String(row2[col - 1] || '').trim();
+    const selNorm = sel.toLowerCase();
+    if (sel && selNorm !== 'select option' && selNorm !== EXCLUDE_TRIGGER) {
+      currentFull.set(colName, selNorm);
+    }
+  }
+  if (currentFull.size === 0) return [];
+
+  const lastRow = builder.getLastRow();
+  if (lastRow < CATALOGUE_DATA_START) return [];
+
+  const catData = builder.getRange(
+    CATALOGUE_DATA_START, 1, lastRow - CATALOGUE_DATA_START + 1, lastCol
+  ).getValues();
+
+  const exactMatches = [];
+  catData.forEach(catRow => {
+    const manifestName = String(catRow[0] || '').trim();
+    if (!manifestName) return;
+
+    const catFull = new Map();
+    for (let col = 2; col <= lastCol; col++) {
+      const colName = String(row1[col - 1] || '').trim();
+      if (!colName) continue;
+      const val = catRow[col - 1];
+      let selStr = '';
+      if (val === true)                                           selStr = 'include and visible (mandatory)';
+      else if (typeof val === 'string' && val.trim().length > 0) selStr = val.trim().toLowerCase();
+      if (selStr) catFull.set(colName, selStr);
+    }
+
+    // Exact match: same column set and same selection for every column
+    if (currentFull.size !== catFull.size) return;
+    if (![...currentFull].every(([k, v]) => catFull.get(k) === v)) return;
+    exactMatches.push(manifestName);
+  });
+
+  return exactMatches;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
