@@ -782,10 +782,17 @@ function applyBuilderDropdowns_(builder) {
 // Applied to DATE_OF_COLLECTION only. Does two things:
 //   1. Pre-formats cells as Text (@) so Excel doesn't auto-convert YYYY-MM-DD
 //      into its own date serial when the file is downloaded as .xlsx.
-//   2. Adds a conditional formatting rule that highlights the cell red if it
+//   2. Adds a conditional formatting rule that highlights the cell coral if it
 //      is non-empty and does not match the YYYY-MM-DD pattern.
 // Note: no rejection rule is used — rejection rules don't survive xlsx export
-// but conditional formatting does, so red highlighting is the safety net.
+// but conditional formatting does, so coral highlighting is the safety net.
+//
+// WHY no TEXT() wrapper in the formula:
+//   TEXT(cell,"@") on a value that Google Sheets has auto-converted to a date
+//   serial returns the serial number as a string (e.g. "45306"), not the
+//   displayed date string. This caused false positives on correctly formatted
+//   dates. Since cells are already pre-formatted as Text, the cell reference
+//   is used directly in REGEXMATCH so it operates on the stored string value.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function applyDateFormatting_(sheet, colNum, startRow, endRow) {
@@ -795,11 +802,12 @@ function applyDateFormatting_(sheet, colNum, startRow, endRow) {
   // Pre-format as Text so Excel doesn't mangle YYYY-MM-DD on xlsx download
   range.setNumberFormat('@');
 
-  // Red highlight if non-empty AND doesn't match YYYY-MM-DD
-  const pattern = '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$';
+  // Coral highlight if non-empty AND doesn't match YYYY-MM-DD
+  // Simple format-only check (YYYY-MM-DD digits) — no range validation needed
+  const pattern = '^[0-9]{4}-[0-9]{2}-[0-9]{2}$';
   const cfRule  = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(
-      `=AND(${firstCellA1}<>"",NOT(REGEXMATCH(TEXT(${firstCellA1},"@"),"${pattern}")))`
+      `=AND(${firstCellA1}<>"",NOT(REGEXMATCH(${firstCellA1},"${pattern}")))`
     )
     .setBackground(COLOUR_DATE_ERROR)
     .setFontColor(COLOUR_HEADER_TEXT_DARK)
