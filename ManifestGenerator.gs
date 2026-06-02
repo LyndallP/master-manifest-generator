@@ -1121,13 +1121,13 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
     // Bold field name
     textEl.setBold(nameStart, nameEnd, true);
 
-    // Highlight field name with manifest header colour
-    let hlColour;
-    if (isHidden)          hlColour = '#EEEEEE';
-    else if (col.isMandatory) hlColour = COL_MANDATORY;
-    else                   hlColour = COL_OPTIONAL;
+    // Highlight field name with manifest header colour; match header text contrast
+    let hlColour, hlTextColour;
+    if (isHidden)             { hlColour = '#EEEEEE';    hlTextColour = '#000000'; }
+    else if (col.isMandatory) { hlColour = COL_MANDATORY; hlTextColour = '#FFFFFF'; }
+    else                      { hlColour = COL_OPTIONAL;  hlTextColour = '#000000'; }
     textEl.setBackgroundColor(nameStart, nameEnd, hlColour);
-    textEl.setForegroundColor(nameStart, nameEnd, '#000000');
+    textEl.setForegroundColor(nameStart, nameEnd, hlTextColour);
 
     // Grey out entire entry for hidden columns in internal SOP
     if (!partnerFacing && isHidden) {
@@ -1229,22 +1229,23 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   );
 
   // Cols B onward: colour-coded to match the manifest header colours
-  //   Teal       = mandatory (any mandatory trigger)
-  //   Sage       = optional
-  //   White      = hidden
-  //   Light grey = excluded/blank
+  //   Teal       = mandatory → white text
+  //   Sage       = optional  → charcoal text
+  //   White      = hidden    → charcoal text
+  //   Light grey = excluded  → charcoal text
   for (let col = 2; col <= lastCol; col++) {
-    const val = rowValues[col - 1];
+    const val  = rowValues[col - 1];
+    const cell = builder.getRange(insertRow, col);
     if (!val) {
-      builder.getRange(insertRow, col).setBackground(COLOUR_EXCLUDED_CELL);
+      cell.setBackground(COLOUR_EXCLUDED_CELL).setFontColor(COLOUR_HEADER_TEXT_LIGHT);
       continue;
     }
     const selNorm = String(val).toLowerCase();
-    let bg;
-    if      (selNorm.includes('hidden'))   bg = COLOUR_HIDDEN_BG;
-    else if (selNorm.includes('optional')) bg = COLOUR_OPTIONAL_LIGHT;
-    else                                   bg = COLOUR_MANDATORY;
-    builder.getRange(insertRow, col).setBackground(bg);
+    let bg, fg;
+    if      (selNorm.includes('hidden'))   { bg = COLOUR_HIDDEN_BG;     fg = COLOUR_HEADER_TEXT_LIGHT; }
+    else if (selNorm.includes('optional')) { bg = COLOUR_OPTIONAL_LIGHT; fg = COLOUR_HEADER_TEXT_LIGHT; }
+    else                                   { bg = COLOUR_MANDATORY;      fg = COLOUR_HEADER_TEXT_DARK;  }
+    cell.setBackground(bg).setFontColor(fg);
   }
 
   Logger.log(`Catalogue row appended at row ${insertRow}: ${projectName}`);
