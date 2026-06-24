@@ -76,7 +76,7 @@ const SOP_DOC_ID = '10WMIZ9GuB0hj5pBzFkz1U2V3_KwIFH-3cAud6h3-Gow';
 
 // Google Drive folder ID for all output files
 // Extract from the folder URL: drive.google.com/drive/folders/[FOLDER_ID]
-const OUTPUT_FOLDER_ID = '1pHO9F18QAF96UQjpNUN23L7WUX1XNFfc';
+const OUTPUT_FOLDER_ID = '1tnQ7ciifegXd_4HUPcZ4me4kdBtRxnii';
 
 // First data row of the catalogue section in the builder sheet
 const CATALOGUE_DATA_START = 12;

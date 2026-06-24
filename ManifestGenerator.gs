@@ -103,8 +103,8 @@ const SOP_DOC_ID = '10WMIZ9GuB0hj5pBzFkz1U2V3_KwIFH-3cAud6h3-Gow';
 
 // Shared output folder — all generated files are moved here after creation.
 // To change: replace the ID with the new folder ID from the Drive URL.
-// Current: https://drive.google.com/drive/folders/1pHO9F18QAF96UQjpNUN23L7WUX1XNFfc
-const OUTPUT_FOLDER_ID = '1pHO9F18QAF96UQjpNUN23L7WUX1XNFfc';
+// Current: https://drive.google.com/drive/folders/1tnQ7ciifegXd_4HUPcZ4me4kdBtRxnii
+const OUTPUT_FOLDER_ID = '1tnQ7ciifegXd_4HUPcZ4me4kdBtRxnii';
 
 // ─── Colours ──────────────────────────────────────────────────────────────────
 // Single source of truth — changing these updates both sheet headers and SOP highlights.
