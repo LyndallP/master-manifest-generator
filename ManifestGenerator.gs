@@ -108,22 +108,23 @@ const OUTPUT_FOLDER_ID = '1pHO9F18QAF96UQjpNUN23L7WUX1XNFfc';
 
 // ─── Colours ──────────────────────────────────────────────────────────────────
 // Single source of truth — changing these updates both sheet headers and SOP highlights.
-// Palette: deep teal/sage family for biodiversity genomics manifests.
-// Dark = must fill | Light = supplementary | Amber = missing required | Coral = error
+// Palette: forest green / light blue family for biodiversity genomics manifests.
+// Dark = must fill | Light = supplementary | Light green = missing required | Coral = error
 // Avoids red/green error/success semantics; accessible for colourblind users.
 
-const COLOUR_MANDATORY        = '#355C4B';  // Deep forest teal  — mandatory headers (dark)
-const COLOUR_MANDATORY_CELL   = '#F5F8F6';  // Very pale moss    — mandatory data cells
-const COLOUR_OPTIONAL         = '#355C4B';  // (same family — see COLOUR_OPTIONAL_LIGHT)
-const COLOUR_OPTIONAL_LIGHT   = '#C8DDD3';  // Soft sage         — optional headers (light)
-const COLOUR_OPTIONAL_CELL    = '#F5F8F6';  // Very pale moss    — optional data cells
+const COLOUR_MANDATORY        = '#2E6F40';  // Forest green      — mandatory headers (dark)
+const COLOUR_MANDATORY_CELL   = '#FFFFFF';  // White             — mandatory data cells (no tint)
+const COLOUR_OPTIONAL         = '#2E6F40';  // (same family — see COLOUR_OPTIONAL_LIGHT)
+const COLOUR_OPTIONAL_LIGHT   = '#DCEEFB';  // Very light blue   — optional headers (light)
+const COLOUR_OPTIONAL_CELL    = '#FFFFFF';  // White             — optional data cells (no tint)
 const COLOUR_HIDDEN_BG        = '#FFFFFF';  // White             — hidden column headers
 const COLOUR_HIDDEN_CELL      = '#FAFBF9';  // Off-white         — hidden data cells
 const COLOUR_HEADER_TEXT_DARK = '#FFFFFF';  // White             — text on dark (mandatory) headers
-const COLOUR_HEADER_TEXT_LIGHT= '#1E2A24';  // Dark charcoal     — text on light (optional/hidden) headers
+const COLOUR_HEADER_TEXT_LIGHT= '#1E2A24';  // Dark charcoal     — text on light (hidden) headers
+const COLOUR_HEADER_TEXT_BLUE = '#003366';  // Dark blue         — text on optional (light blue) headers
 const COLOUR_HEADER_TEXT      = '#1E2A24';  // Dark charcoal     — default (backwards compat)
 const COLOUR_GRID_LINE        = '#CCCCCC';  // Grey              — cell borders
-const COLOUR_MISSING_REQUIRED = '#F3D27A';  // Soft amber        — blank mandatory cell
+const COLOUR_MISSING_REQUIRED = '#C8E6C9';  // Light green       — blank mandatory cell
 const COLOUR_DATE_ERROR       = '#D97C6C';  // Muted coral       — date format error
 const COLOUR_ROW_ALT          = '#EEF2EF';  // Pale moss-grey    — alternating row stripe
 const COLOUR_EXCLUDED_CELL    = '#EFEFEF';  // Light grey        — excluded columns in catalogue row
@@ -349,8 +350,12 @@ function generateManifest() {
     }
 
     manifest.getRange(1, colNum).setBackground(headerBg);
-    // Dark headers (mandatory) get white text; light headers (optional/hidden) get charcoal
-    const headerTextColour = col.isMandatory ? COLOUR_HEADER_TEXT_DARK : COLOUR_HEADER_TEXT_LIGHT;
+    // Forest green (mandatory, visible) headers get white text; light blue (optional)
+    // headers get dark blue text; white (hidden) headers get charcoal text
+    let headerTextColour;
+    if (col.isHidden)         headerTextColour = COLOUR_HEADER_TEXT_LIGHT;
+    else if (col.isMandatory) headerTextColour = COLOUR_HEADER_TEXT_DARK;
+    else                      headerTextColour = COLOUR_HEADER_TEXT_BLUE;
     manifest.getRange(1, colNum).setFontColor(headerTextColour);
     if (col.sopComment) manifest.getRange(1, colNum).setComment(col.sopComment);
 
@@ -862,7 +867,7 @@ function applyDateFormatting_(sheet, colNum, startRow, endRow) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helper: applyMissingMandatoryHighlight_(sheet, colNum, startRow, endRow)
 // Applies a conditional formatting rule to mandatory columns: if a cell is
-// blank, it is highlighted with soft amber (#F3D27A) to guide data curators.
+// blank, it is highlighted light green (#C8E6C9) to guide data curators.
 // This is the single most useful validation cue in a large manifest — it makes
 // missing required values immediately visible without being alarming.
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1131,8 +1136,8 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
   });
 
   // Colour constants linked to sheet header colours
-  const COL_MANDATORY = COLOUR_MANDATORY;   // '#355C4B' deep forest teal — links to manifest header colour
-  const COL_OPTIONAL  = COLOUR_OPTIONAL_LIGHT;  // '#C8DDD3' soft sage
+  const COL_MANDATORY = COLOUR_MANDATORY;       // forest green — links to manifest header colour
+  const COL_OPTIONAL  = COLOUR_OPTIONAL_LIGHT;  // very light blue
 
   const sopColumns = partnerFacing
     ? columns.filter(col => !col.isHidden)
@@ -1286,10 +1291,10 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
  * Format of the new row:
  *   Col A  = project name, bold, yellow background, with a cell note
  *            flagging it as pending SM team review.
- *   Col B+ = full selection string for included columns (e.g. "Include,
- *            visible and mandatory"), empty string for excluded/unset.
+ *   Col B+ = full selection string for included columns (e.g. "Mandatory,
+ *            visible"), empty string for excluded/unset.
  *            Each cell is colour-coded to match the manifest headers:
- *            teal (mandatory), sage (optional), white (hidden),
+ *            forest green (mandatory), light blue (optional), white (hidden),
  *            light grey (excluded).
  *
  * Row formatting: font size 8, text wrap, solid border around the full row.
@@ -1352,10 +1357,10 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   );
 
   // Cols B onward: colour-coded to match the manifest header colours
-  //   Teal       = mandatory → white text
-  //   Sage       = optional  → charcoal text
-  //   White      = hidden    → charcoal text
-  //   Light grey = excluded  → charcoal text
+  //   Forest green = mandatory → white text
+  //   Light blue   = optional  → charcoal text
+  //   White        = hidden    → charcoal text
+  //   Light grey   = excluded  → charcoal text
   for (let col = 2; col <= lastCol; col++) {
     const val  = rowValues[col - 1];
     const cell = builder.getRange(insertRow, col);

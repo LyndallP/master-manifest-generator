@@ -89,22 +89,23 @@ const MANIFEST_DATA_ROWS = 1920;
 Colours are defined as a single source of truth — changing them here updates both the manifest sheet headers and the SOP document field name highlights:
 
 ```javascript
-const COLOUR_MANDATORY        = '#355C4B';  // Deep forest teal  — mandatory headers (white text)
-const COLOUR_MANDATORY_CELL   = '#F5F8F6';  // Very pale moss    — mandatory data cell backgrounds
-const COLOUR_OPTIONAL_LIGHT   = '#C8DDD3';  // Soft sage         — optional headers (charcoal text)
-const COLOUR_OPTIONAL_CELL    = '#F5F8F6';  // Very pale moss    — optional data cell backgrounds
+const COLOUR_MANDATORY        = '#2E6F40';  // Forest green      — mandatory headers (white text)
+const COLOUR_MANDATORY_CELL   = '#FFFFFF';  // White             — mandatory data cell backgrounds (no tint)
+const COLOUR_OPTIONAL_LIGHT   = '#DCEEFB';  // Very light blue   — optional headers (dark blue text)
+const COLOUR_OPTIONAL_CELL    = '#FFFFFF';  // White             — optional data cell backgrounds (no tint)
 const COLOUR_HIDDEN_BG        = '#FFFFFF';  // White             — hidden column headers
 const COLOUR_HIDDEN_CELL      = '#FAFBF9';  // Off-white         — hidden data cell backgrounds
 const COLOUR_HEADER_TEXT_DARK = '#FFFFFF';  // White             — text on mandatory headers
-const COLOUR_HEADER_TEXT_LIGHT= '#1E2A24';  // Dark charcoal     — text on optional/hidden headers
+const COLOUR_HEADER_TEXT_LIGHT= '#1E2A24';  // Dark charcoal     — text on hidden headers
+const COLOUR_HEADER_TEXT_BLUE = '#003366';  // Dark blue         — text on optional headers
 const COLOUR_GRID_LINE        = '#CCCCCC';  // Grey              — cell borders
-const COLOUR_MISSING_REQUIRED = '#F3D27A';  // Soft amber        — blank mandatory cell highlight
+const COLOUR_MISSING_REQUIRED = '#C8E6C9';  // Light green       — blank mandatory cell highlight
 const COLOUR_DATE_ERROR       = '#D97C6C';  // Muted coral       — date format validation error
 const COLOUR_ROW_ALT          = '#EEF2EF';  // Pale moss-grey    — alternating row stripe
 const COLOUR_EXCLUDED_CELL    = '#EFEFEF';  // Light grey        — excluded columns in catalogue row
 ```
 
-> **Palette rationale:** The deep teal/sage family was chosen specifically for biodiversity genomics manifests. It avoids red/green error/success semantics, is accessible for colourblind users, and the dark/light hierarchy (dark = must fill, light = supplementary) is more intuitive than arbitrary colour differences. The palette subtly evokes field ecology and natural history collections.
+> **Palette rationale:** Forest green for mandatory headers and light blue (with dark blue text) for optional headers were chosen specifically for biodiversity genomics manifests. It avoids red/green error/success semantics, is accessible for colourblind users, and the dark/light hierarchy (dark = must fill, light = supplementary) is more intuitive than arbitrary colour differences.
 
 ---
 
@@ -137,8 +138,8 @@ Columns where row 4 says `Mandatory` (or `WOSPI Mandatory`) get a restricted 3-o
 | Selection | Header colour | Meaning |
 |-----------|--------------|---------|
 | `select option` | *(not included)* | Unset — column silently excluded from the manifest. Only offered on non-system-mandatory columns |
-| `Mandatory, visible` | 🟩 Deep teal (white text) | Partner must fill this in |
-| `Optional, visible` | 🫧 Soft sage (charcoal text) | Partner may fill this in |
+| `Mandatory, visible` | 🟩 Forest green (white text) | Partner must fill this in |
+| `Optional, visible` | 🔵 Very light blue (dark blue text) | Partner may fill this in |
 | `Mandatory, hide, use NOT_COLLECTED` | ⬜ White | Hidden from partner; every data row pre-filled with `NOT_COLLECTED`. Offered on system-mandatory columns |
 | `Include, hide, use NOT_COLLECTED` | ⬜ White | Hidden from partner; every data row pre-filled with `NOT_COLLECTED`. Offered on non-system-mandatory columns |
 | `Mandatory, hide, use a bespoke term` | ⬜ White | Hidden from partner; every data row pre-filled with the value from row 6. Offered on system-mandatory columns |
@@ -190,19 +191,19 @@ Running **▶ Run generator** triggers a 17-step pipeline:
 ## Generated Manifest Format
 
 ### Header row
-- **Deep forest teal (`#355C4B`) background, white text** — mandatory columns
-- **Soft sage (`#C8DDD3`) background, dark charcoal text** — optional columns
+- **Forest green (`#2E6F40`) background, white text** — mandatory columns
+- **Very light blue (`#DCEEFB`) background, dark blue text** — optional columns
 - **White background, dark charcoal text** — hidden columns (prefixed `[ignore]`, column hidden in sheet)
 - Text wraps; row height 60px to accommodate long field names
 - Each header cell has a **cell comment** (small triangle in corner) containing the full SOP description for that field — hover to read
 
 ### Data rows (rows 2–1921)
-- Very pale moss tint — mandatory and optional columns
+- White, untinted — mandatory and optional columns
 - Off-white — hidden columns
 - Grey grid borders on all cells
 - **Dropdown validation** on fields with controlled vocabularies (e.g. `ORGANISM_PART`, `LIFESTAGE`, `SEX`, `GAL`)
 - **Prefill values** — hidden columns are pre-filled in every data row with either `NOT_COLLECTED` or the bespoke value from builder sheet row 6, so partners never need to touch them
-- **Missing mandatory value highlight** — blank cells in mandatory columns *without* a prefill are highlighted **soft amber** (`#F3D27A`), making missing required values immediately visible to data curators without being alarming
+- **Missing mandatory value highlight** — blank cells in mandatory columns *without* a prefill are highlighted **light green** (`#C8E6C9`), making missing required values immediately visible to data curators without being alarming
 - **Date validation** on `DATE_OF_COLLECTION`:
   - Cells pre-formatted as Text so Excel doesn't corrupt `YYYY-MM-DD` on `.xlsx` download
   - **Muted coral** (`#D97C6C`) highlight if a non-empty cell doesn't match `YYYY-MM-DD` pattern (survives `.xlsx` export; a rejection rule would not)
@@ -221,7 +222,7 @@ Two Google Docs are created per run, both saved to the shared output folder:
 ### Internal SOP (`ToL_Internal_SOP_[name]_[date]`)
 - All columns listed including hidden ones
 - Hidden column entries are greyed and marked `[HIDDEN]` in the column letter prefix (e.g. `B [HIDDEN]. SYMBIONT: …`)
-- Field names highlighted in their manifest colour (teal/sage/grey)
+- Field names highlighted in their manifest colour (green/light blue/grey)
 
 ### Partner SOP (`ToL_Partner_SOP_[name]_[date]`)
 - Hidden columns omitted entirely
@@ -240,7 +241,7 @@ Both documents follow the format of the master SOP:
 The catalogue section (rows 13+ of the builder sheet) records every manifest that has been generated. Each row contains:
 
 - **Col A** — manifest name and version (bold, yellow background when newly added, with a cell note for SM review)
-- **Cols B+** — full selection string for included columns (e.g. `Mandatory, visible`), empty for excluded columns; cells colour-coded to match the manifest headers (teal/sage/white for included, light grey for excluded)
+- **Cols B+** — full selection string for included columns (e.g. `Mandatory, visible`), empty for excluded columns; cells colour-coded to match the manifest headers (green/light blue/white for included, light grey for excluded)
 - **Row formatting** — font size 8, text wrap enabled, solid border around the full row
 
 > **Backwards compatibility:** Older catalogue rows using `TRUE`/`FALSE` checkboxes are still understood by both the catalogue checker and the load-from-catalogue function.
@@ -374,6 +375,7 @@ This script is maintained by the Tree of Life Sample Management team at the Well
 
 | Version | Date | Notes |
 |---------|------|-------|
+| 0.10 | 2026-06 | New colour palette: forest green mandatory headers, very light blue/dark blue text optional headers; mandatory/optional data cells now plain white (no tint); missing-mandatory highlight changed from amber to light green |
 | 0.9 | 2026-06 | New row 2 vocabulary (`Mandatory, visible` / `Optional, visible` / hide-and-prefill options); row 6 bespoke autopopulate values; unset selections no longer block generation (silently excluded); hidden columns auto-prefilled with `NOT_COLLECTED` or bespoke term; `MANIFEST_DATA_ROWS` increased to 1920 |
 | 0.8 | 2026-06 | Fix date CF false positives (remove TEXT() wrapper); auto duplicate-check before generation; white text on mandatory catalogue/SOP cells |
 | 0.7 | 2026-06 | Teal/sage colour palette; amber missing-value highlight; muted coral date error; separate dark/light header text colours |
