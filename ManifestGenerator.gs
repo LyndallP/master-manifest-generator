@@ -20,6 +20,7 @@
  * MENU (📋 ToL Manifest Tools):
  *   • 🔍 Check catalogue for identical manifest  → checkCatalogue()
  *   • 📂 Load from catalogue into row 2          → loadFromCatalogue()
+ *   • 🔄 Sync SOP comments to builder headers    → syncSopCommentsToBuilder()
  *   • Generate manifest + SOP > ▶ Run generator  → generateManifest()
  *
  * BUILDER SHEET STRUCTURE (all_manifest_builder_v1.0):
@@ -89,26 +90,35 @@ const SOP_DOC_ID = '10WMIZ9GuB0hj5pBzFkz1U2V3_KwIFH-3cAud6h3-Gow';
 const OUTPUT_FOLDER_ID = '1pHO9F18QAF96UQjpNUN23L7WUX1XNFfc';
 
 // ─── Colours ──────────────────────────────────────────────────────────────────
-// Single source of truth — changing these updates both sheet headers and SOP highlights
+// Single source of truth — changing these updates both sheet headers and SOP highlights.
+// Palette: deep teal/sage family for biodiversity genomics manifests.
+// Dark = must fill | Light = supplementary | Amber = missing required | Coral = error
+// Avoids red/green error/success semantics; accessible for colourblind users.
 
-const COLOUR_MANDATORY      = '#38761D';  // Green       — mandatory header
-const COLOUR_MANDATORY_CELL = '#D9EAD3';  // Very light green  — mandatory data cells
-const COLOUR_OPTIONAL       = '#3C78D8';  // Medium blue — reserved for future use (e.g. Option B sidebar)
-const COLOUR_OPTIONAL_LIGHT = '#A4C2F4';  // Lighter blue — "visible and optional" header
-const COLOUR_OPTIONAL_CELL  = '#D9E8FB';  // Very light blue — optional data cells
-const COLOUR_HIDDEN_BG      = '#FFFFFF';  // White bg    — hidden columns
-const COLOUR_HIDDEN_CELL    = '#F8F8F8';  // Near-white  — hidden data cells
-const COLOUR_HEADER_TEXT    = '#000000';  // Black text  — all header cells
-const COLOUR_GRID_LINE      = '#CCCCCC';  // Grey        — cell borders
+const COLOUR_MANDATORY        = '#355C4B';  // Deep forest teal  — mandatory headers (dark)
+const COLOUR_MANDATORY_CELL   = '#F5F8F6';  // Very pale moss    — mandatory data cells
+const COLOUR_OPTIONAL         = '#355C4B';  // (same family — see COLOUR_OPTIONAL_LIGHT)
+const COLOUR_OPTIONAL_LIGHT   = '#C8DDD3';  // Soft sage         — optional headers (light)
+const COLOUR_OPTIONAL_CELL    = '#F5F8F6';  // Very pale moss    — optional data cells
+const COLOUR_HIDDEN_BG        = '#FFFFFF';  // White             — hidden column headers
+const COLOUR_HIDDEN_CELL      = '#FAFBF9';  // Off-white         — hidden data cells
+const COLOUR_HEADER_TEXT_DARK = '#FFFFFF';  // White             — text on dark (mandatory) headers
+const COLOUR_HEADER_TEXT_LIGHT= '#1E2A24';  // Dark charcoal     — text on light (optional/hidden) headers
+const COLOUR_HEADER_TEXT      = '#1E2A24';  // Dark charcoal     — default (backwards compat)
+const COLOUR_GRID_LINE        = '#CCCCCC';  // Grey              — cell borders
+const COLOUR_MISSING_REQUIRED = '#F3D27A';  // Soft amber        — blank mandatory cell
+const COLOUR_DATE_ERROR       = '#D97C6C';  // Muted coral       — date format error
+const COLOUR_ROW_ALT          = '#EEF2EF';  // Pale moss-grey    — alternating row stripe
+const COLOUR_EXCLUDED_CELL    = '#EFEFEF';  // Light grey        — excluded columns in catalogue row
 
 // ─── Row 2 selection values → behaviour ──────────────────────────────────────
-// Mandatory (green header) triggers — any of these in row 2 → green/mandatory
+// Mandatory (deep teal header) triggers — any of these in row 2 → teal/mandatory
 const ORANGE_TRIGGERS = [
   'include and visible (mandatory)',
   'include, visible and mandatory',
   'include and visible'          // plain visible → green/mandatory if row 4 is Mandatory, else blue/optional
 ];
-// Light-blue (optional) trigger
+// Soft sage (optional) trigger
 const BLUE_TRIGGER = 'include, visible and optional';
 // Hidden trigger
 const HIDDEN_TRIGGER = 'include and hidden';
@@ -126,7 +136,7 @@ const BUILDER_DROPDOWN_OPTIONS = [
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN: generateManifest()
-// Orchestrates the full manifest generation pipeline (steps 1–16).
+// Orchestrates the full manifest generation pipeline (steps 1–17).
 // Called from the menu: 📋 ToL Manifest Tools > Generate manifest + SOP > ▶ Run generator
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -160,7 +170,32 @@ function generateManifest() {
     builder.getRange(PROJECT_NAME_CELL).setValue(projectName);
   }
 
-  // ── Step 3: Fetch live SOP descriptions ──────────────────────────────────
+  // ── Step 3: Check catalogue for exact duplicate before doing anything expensive ──
+  // Protects against accidental duplicate generation even if the PI skipped
+  // the manual 🔍 Check catalogue step.
+  const lastCol  = builder.getLastColumn();
+  const row1     = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
+  const row2     = builder.getRange(ROW_SELECTION,    1, 1, lastCol).getValues()[0];
+
+  const existingExact = findExactCatalogueMatches_(builder, lastCol, row1, row2);
+  if (existingExact.length > 0) {
+    const matchList = existingExact.map(m => `  • ${m}`).join('\n');
+    const ui  = SpreadsheetApp.getUi();
+    const res = ui.alert(
+      '⚠️ Identical manifest already exists',
+      `The current column selections exactly match ` +
+      `${existingExact.length === 1 ? 'this existing manifest' : 'these existing manifests'}:\n\n` +
+      `${matchList}\n\n` +
+      `Generate a new identical manifest anyway?`,
+      ui.ButtonSet.YES_NO
+    );
+    if (res !== ui.Button.YES) {
+      alert_('Generation cancelled. Use 📂 Load from catalogue to work with an existing manifest.');
+      return;
+    }
+  }
+
+  // ── Step 4: Fetch live SOP descriptions ──────────────────────────────────
   let sopComments;
   try {
     sopComments = fetchSopComments_();
@@ -168,17 +203,14 @@ function generateManifest() {
     alert_(`⚠️ SOP Sync Failed — Manifest NOT generated\n\n${e.message}`); return;
   }
 
-  // ── Step 4: Read all builder rows ────────────────────────────────────────
-  const lastCol  = builder.getLastColumn();
-  const row1     = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
-  const row2     = builder.getRange(ROW_SELECTION,    1, 1, lastCol).getValues()[0];
-  const row3     = builder.getRange(ROW_COL_ORDER,    1, 1, lastCol).getValues()[0];
-  const row4     = builder.getRange(ROW_SYSTEM_REQ,   1, 1, lastCol).getValues()[0];
+  // ── Step 5: Read remaining builder rows ───────────────────────────────────
+  const row3     = builder.getRange(ROW_COL_ORDER,  1, 1, lastCol).getValues()[0];
+  const row4     = builder.getRange(ROW_SYSTEM_REQ, 1, 1, lastCol).getValues()[0];
 
-  // ── Step 5: Read Data Validation tab ─────────────────────────────────────
+  // ── Step 6: Read Data Validation tab ─────────────────────────────────────
   const dvMap = readDataValidationMap_(dvSheet);
 
-  // ── Step 6: Build column list ─────────────────────────────────────────────
+  // ── Step 7: Build column list ─────────────────────────────────────────────
   const missingCols = [];
   const rawColumns  = [];   // before reordering
 
@@ -237,7 +269,7 @@ function generateManifest() {
     });
   }
 
-  // ── Step 7: Block on missing selections ───────────────────────────────────
+  // ── Step 8: Block on missing selections ───────────────────────────────────
   if (missingCols.length > 0) {
     const list = missingCols.slice(0, 20).join('\n  • ');
     const more = missingCols.length > 20 ? `\n  …and ${missingCols.length - 20} more.` : '';
@@ -246,7 +278,7 @@ function generateManifest() {
   }
   if (rawColumns.length === 0) { alert_('No columns selected. Please update row 2.'); return; }
 
-  // ── Step 8: Apply column ordering from row 3 ─────────────────────────────
+  // ── Step 9: Apply column ordering from row 3 ─────────────────────────────
   // Columns with an order number sort by that number first;
   // columns without (null) retain their natural left-to-right order after numbered ones.
   const numbered   = rawColumns.filter(c => c.orderNum !== null).sort((a, b) =>
@@ -255,7 +287,7 @@ function generateManifest() {
     a.naturalIdx - b.naturalIdx);
   const columns = [...numbered, ...unnumbered];
 
-  // ── Step 9: Create the Google Sheets file ────────────────────────────────
+  // ── Step 10: Create the Google Sheets file ───────────────────────────────
   const today    = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   const safeName = projectName.replace(/[\\/:*?"<>|]/g, '_');
   const baseName = `ToL_Manifest_${safeName}_${today}`;
@@ -267,7 +299,7 @@ function generateManifest() {
 
   const numCols = columns.length;
 
-  // ── Step 10: Write header row ─────────────────────────────────────────────
+  // ── Step 11: Write header row ─────────────────────────────────────────────
   // Hidden columns get "[ignore]" appended to the name
   const headerValues = columns.map(col =>
     col.isHidden ? `[ignore] ${col.name}` : col.name
@@ -303,6 +335,9 @@ function generateManifest() {
     }
 
     manifest.getRange(1, colNum).setBackground(headerBg);
+    // Dark headers (mandatory) get white text; light headers (optional/hidden) get charcoal
+    const headerTextColour = col.isMandatory ? COLOUR_HEADER_TEXT_DARK : COLOUR_HEADER_TEXT_LIGHT;
+    manifest.getRange(1, colNum).setFontColor(headerTextColour);
     if (col.sopComment) manifest.getRange(1, colNum).setComment(col.sopComment);
 
     // Data cells — uniform light tint (no alternating rows, colour carries the meaning)
@@ -317,7 +352,7 @@ function generateManifest() {
   // Column widths
   for (let i = 1; i <= numCols; i++) manifest.setColumnWidth(i, 160);
 
-  // ── Step 11: Data rows ────────────────────────────────────────────────────
+  // ── Step 12: Data rows ────────────────────────────────────────────────────
 
   columns.forEach((col, i) => {
     const colNum = i + 1;
@@ -327,9 +362,14 @@ function generateManifest() {
       applyDropdown_(manifest, newSS, colNum, dataStart, dataEnd, col.name, col.dvValues);
     }
 
-    // Date: conditional formatting only (red if non-empty and wrong format)
+    // Date: conditional formatting only (coral if non-empty and wrong format)
     if (col.name === DATE_COLUMN_NAME) {
       applyDateFormatting_(manifest, colNum, dataStart, dataEnd);
+    }
+
+    // Missing mandatory value: amber highlight if mandatory column cell is blank
+    if (col.isMandatory) {
+      applyMissingMandatoryHighlight_(manifest, colNum, dataStart, dataEnd);
     }
   });
 
@@ -338,25 +378,25 @@ function generateManifest() {
     manifest.setRowHeight(r, 21);
   }
 
-  // ── Step 12: Hide hidden columns ──────────────────────────────────────────
+  // ── Step 13: Hide hidden columns ──────────────────────────────────────────
   const hiddenCols = columns
     .map((col, i) => col.isHidden ? i + 1 : null)
     .filter(Boolean);
   hiddenCols.slice().reverse().forEach(c => manifest.hideColumns(c));
 
-  // ── Step 13: Add partner-facing SOP tab ───────────────────────────────────
+  // ── Step 14: Add partner-facing SOP tab ───────────────────────────────────
   addPartnerSopTab_(newSS, columns, today, sopComments, projectName);
 
-  // ── Step 14: Create two SOP Google Docs ──────────────────────────────────
+  // ── Step 15: Create two SOP Google Docs ──────────────────────────────────
   const internalDoc = createSopDoc_(baseName, columns, today, sopComments, projectName, false);
   moveToOutputFolder_(internalDoc.getId());
   const partnerDoc  = createSopDoc_(baseName, columns, today, sopComments, projectName, true);
   moveToOutputFolder_(partnerDoc.getId());
 
-  // ── Step 15: Append catalogue row to builder sheet ───────────────────────
+  // ── Step 16: Append catalogue row to builder sheet ───────────────────────
   const catRowNum = appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2);
 
-  // ── Step 16: Summary ─────────────────────────────────────────────────────
+  // ── Step 17: Summary ─────────────────────────────────────────────────────
   const sheetUrl   = newSS.getUrl();
   const internalUrl = internalDoc.getUrl();
   const partnerUrl  = partnerDoc.getUrl();
@@ -374,6 +414,59 @@ function generateManifest() {
     `Please copy this row to the master manifest catalogue when ready.\n\n` +
     `All URLs saved to Apps Script log.`
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper: findExactCatalogueMatches_(builder, lastCol, row1, row2)
+// Returns an array of catalogue entry names whose column selections exactly
+// match the current row 2. Used by generateManifest() to warn before
+// creating a duplicate, and by checkCatalogue() for its exact-match report.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function findExactCatalogueMatches_(builder, lastCol, row1, row2) {
+  // Build a normalised map of the current selections
+  const currentFull = new Map();
+  for (let col = 2; col <= lastCol; col++) {
+    const colName = String(row1[col - 1] || '').trim();
+    if (!colName) continue;
+    const sel     = String(row2[col - 1] || '').trim();
+    const selNorm = sel.toLowerCase();
+    if (sel && selNorm !== 'select option' && selNorm !== EXCLUDE_TRIGGER) {
+      currentFull.set(colName, selNorm);
+    }
+  }
+  if (currentFull.size === 0) return [];
+
+  const lastRow = builder.getLastRow();
+  if (lastRow < CATALOGUE_DATA_START) return [];
+
+  const catData = builder.getRange(
+    CATALOGUE_DATA_START, 1, lastRow - CATALOGUE_DATA_START + 1, lastCol
+  ).getValues();
+
+  const exactMatches = [];
+  catData.forEach(catRow => {
+    const manifestName = String(catRow[0] || '').trim();
+    if (!manifestName) return;
+
+    const catFull = new Map();
+    for (let col = 2; col <= lastCol; col++) {
+      const colName = String(row1[col - 1] || '').trim();
+      if (!colName) continue;
+      const val = catRow[col - 1];
+      let selStr = '';
+      if (val === true)                                           selStr = 'include and visible (mandatory)';
+      else if (typeof val === 'string' && val.trim().length > 0) selStr = val.trim().toLowerCase();
+      if (selStr) catFull.set(colName, selStr);
+    }
+
+    // Exact match: same column set and same selection for every column
+    if (currentFull.size !== catFull.size) return;
+    if (![...currentFull].every(([k, v]) => catFull.get(k) === v)) return;
+    exactMatches.push(manifestName);
+  });
+
+  return exactMatches;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -618,6 +711,54 @@ function loadFromCatalogue() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// MAIN: syncSopCommentsToBuilder()
+// Fetches the latest SOP descriptions from the master SOP Google Doc and writes
+// them as cell comments on the row 1 column headers of the builder sheet
+// (all_manifest_builder_v1.0). This keeps the builder sheet up to date whenever
+// the SOP source document is edited, without needing to run a full generation.
+// Called from the menu: 📋 ToL Manifest Tools > 🔄 Sync SOP comments to builder headers
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function syncSopCommentsToBuilder() {
+  const ss      = SpreadsheetApp.getActiveSpreadsheet();
+  const builder = ss.getSheetByName(BUILDER_SHEET_NAME);
+  if (!builder) { alert_(`Sheet "${BUILDER_SHEET_NAME}" not found.`); return; }
+
+  // Fetch latest SOP descriptions — hard-fails if Doc is inaccessible or malformed
+  let sopComments;
+  try {
+    sopComments = fetchSopComments_();
+  } catch (e) {
+    alert_(`⚠️ SOP Sync Failed\n\n${e.message}`); return;
+  }
+
+  // Apply comments to every named header cell in row 1 (skip col 1 = label column)
+  const lastCol = builder.getLastColumn();
+  const row1    = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
+  let updated = 0;
+  let missing  = 0;
+
+  for (let col = 2; col <= lastCol; col++) {
+    const colName = String(row1[col - 1] || '').trim();
+    if (!colName) continue;
+    if (sopComments[colName]) {
+      builder.getRange(ROW_PROJECT_NAME, col).setComment(sopComments[colName]);
+      updated++;
+    } else {
+      missing++;
+    }
+  }
+
+  alert_(
+    `✅ SOP comments synced to builder headers.\n\n` +
+    `${updated} column(s) updated with the latest SOP descriptions.\n` +
+    (missing > 0
+      ? `${missing} column(s) had no matching SOP entry — their comments were left unchanged.`
+      : `All columns matched.`)
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Helper: applyBuilderDropdowns_(builder)
 // Applies the five-option dropdown validation list to every column in row 2
 // of the builder sheet. Runs automatically at the start of generateManifest()
@@ -641,10 +782,17 @@ function applyBuilderDropdowns_(builder) {
 // Applied to DATE_OF_COLLECTION only. Does two things:
 //   1. Pre-formats cells as Text (@) so Excel doesn't auto-convert YYYY-MM-DD
 //      into its own date serial when the file is downloaded as .xlsx.
-//   2. Adds a conditional formatting rule that highlights the cell red if it
+//   2. Adds a conditional formatting rule that highlights the cell coral if it
 //      is non-empty and does not match the YYYY-MM-DD pattern.
 // Note: no rejection rule is used — rejection rules don't survive xlsx export
-// but conditional formatting does, so red highlighting is the safety net.
+// but conditional formatting does, so coral highlighting is the safety net.
+//
+// WHY no TEXT() wrapper in the formula:
+//   TEXT(cell,"@") on a value that Google Sheets has auto-converted to a date
+//   serial returns the serial number as a string (e.g. "45306"), not the
+//   displayed date string. This caused false positives on correctly formatted
+//   dates. Since cells are already pre-formatted as Text, the cell reference
+//   is used directly in REGEXMATCH so it operates on the stored string value.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function applyDateFormatting_(sheet, colNum, startRow, endRow) {
@@ -654,14 +802,38 @@ function applyDateFormatting_(sheet, colNum, startRow, endRow) {
   // Pre-format as Text so Excel doesn't mangle YYYY-MM-DD on xlsx download
   range.setNumberFormat('@');
 
-  // Red highlight if non-empty AND doesn't match YYYY-MM-DD
-  const pattern = '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$';
+  // Coral highlight if non-empty AND doesn't match YYYY-MM-DD
+  // Simple format-only check (YYYY-MM-DD digits) — no range validation needed
+  const pattern = '^[0-9]{4}-[0-9]{2}-[0-9]{2}$';
   const cfRule  = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(
-      `=AND(${firstCellA1}<>"",NOT(REGEXMATCH(TEXT(${firstCellA1},"@"),"${pattern}")))`
+      `=AND(${firstCellA1}<>"",NOT(REGEXMATCH(${firstCellA1},"${pattern}")))`
     )
-    .setBackground('#FF4444')
-    .setFontColor('#FFFFFF')
+    .setBackground(COLOUR_DATE_ERROR)
+    .setFontColor(COLOUR_HEADER_TEXT_DARK)
+    .setRanges([range])
+    .build();
+
+  const rules = sheet.getConditionalFormatRules();
+  rules.push(cfRule);
+  sheet.setConditionalFormatRules(rules);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper: applyMissingMandatoryHighlight_(sheet, colNum, startRow, endRow)
+// Applies a conditional formatting rule to mandatory columns: if a cell is
+// blank, it is highlighted with soft amber (#F3D27A) to guide data curators.
+// This is the single most useful validation cue in a large manifest — it makes
+// missing required values immediately visible without being alarming.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function applyMissingMandatoryHighlight_(sheet, colNum, startRow, endRow) {
+  const range       = sheet.getRange(startRow, colNum, endRow - startRow + 1, 1);
+  const firstCellA1 = sheet.getRange(startRow, colNum).getA1Notation();
+
+  const cfRule = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=${firstCellA1}=""`)
+    .setBackground(COLOUR_MISSING_REQUIRED)
     .setRanges([range])
     .build();
 
@@ -919,8 +1091,8 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
   });
 
   // Colour constants linked to sheet header colours
-    const COL_MANDATORY = COLOUR_MANDATORY;   // '#38761D' green — links to manifest header colour
-  const COL_OPTIONAL  = COLOUR_OPTIONAL_LIGHT;
+  const COL_MANDATORY = COLOUR_MANDATORY;   // '#355C4B' deep forest teal — links to manifest header colour
+  const COL_OPTIONAL  = COLOUR_OPTIONAL_LIGHT;  // '#C8DDD3' soft sage
 
   const sopColumns = partnerFacing
     ? columns.filter(col => !col.isHidden)
@@ -1032,13 +1204,13 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
     // Bold field name
     textEl.setBold(nameStart, nameEnd, true);
 
-    // Highlight field name with manifest header colour
-    let hlColour;
-    if (isHidden)          hlColour = '#EEEEEE';
-    else if (col.isMandatory) hlColour = COL_MANDATORY;
-    else                   hlColour = COL_OPTIONAL;
+    // Highlight field name with manifest header colour; match header text contrast
+    let hlColour, hlTextColour;
+    if (isHidden)             { hlColour = '#EEEEEE';    hlTextColour = '#000000'; }
+    else if (col.isMandatory) { hlColour = COL_MANDATORY; hlTextColour = '#FFFFFF'; }
+    else                      { hlColour = COL_OPTIONAL;  hlTextColour = '#000000'; }
     textEl.setBackgroundColor(nameStart, nameEnd, hlColour);
-    textEl.setForegroundColor(nameStart, nameEnd, '#000000');
+    textEl.setForegroundColor(nameStart, nameEnd, hlTextColour);
 
     // Grey out entire entry for hidden columns in internal SOP
     if (!partnerFacing && isHidden) {
@@ -1077,7 +1249,10 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
  *   Col B+ = full selection string for included columns (e.g. "Include,
  *            visible and mandatory"), empty string for excluded/unset.
  *            Each cell is colour-coded to match the manifest headers:
- *            orange (mandatory), light blue (optional), white (hidden).
+ *            teal (mandatory), sage (optional), white (hidden),
+ *            light grey (excluded).
+ *
+ * Row formatting: font size 8, text wrap, solid border around the full row.
  *
  * This richer format (vs old TRUE/FALSE checkboxes) allows loadFromCatalogue()
  * to restore the exact mandatory/optional/hidden nuance when pre-populating
@@ -1102,8 +1277,8 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   // Skip any blank separator rows between last entry and insertion point
   // (keep insertRow as-is — blank rows between entries are fine)
 
-  // Build the row values: col A = name, cols B onward = TRUE/FALSE
-  const rowValues = new Array(lastCol).fill(false);
+  // Build the row values: col A = name, cols B onward = selection strings or ''
+  const rowValues = new Array(lastCol).fill('');
   rowValues[0] = projectName;  // col A (index 0)
 
   // Store the full selection string for each column (richer than TRUE/FALSE).
@@ -1121,6 +1296,13 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   const targetRange = builder.getRange(insertRow, 1, 1, lastCol);
   targetRange.setValues([rowValues]);
 
+  // Row-wide formatting: compact font, wrapped text, border around the full row
+  targetRange
+    .setFontSize(8)
+    .setWrap(true)
+    .setBorder(true, true, true, true, null, null,
+      '#000000', SpreadsheetApp.BorderStyle.SOLID);
+
   // Col A: yellow to flag as new/pending SM review
   const nameCell = builder.getRange(insertRow, 1);
   nameCell.setBackground('#FFF9C4').setFontWeight('bold');
@@ -1130,19 +1312,23 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   );
 
   // Cols B onward: colour-coded to match the manifest header colours
-  //   Green      = mandatory (any mandatory trigger)
-  //   Light blue = optional
-  //   White      = hidden
-  //   No fill    = excluded/blank
+  //   Teal       = mandatory → white text
+  //   Sage       = optional  → charcoal text
+  //   White      = hidden    → charcoal text
+  //   Light grey = excluded  → charcoal text
   for (let col = 2; col <= lastCol; col++) {
-    const val = rowValues[col - 1];
-    if (!val) continue;
+    const val  = rowValues[col - 1];
+    const cell = builder.getRange(insertRow, col);
+    if (!val) {
+      cell.setBackground(COLOUR_EXCLUDED_CELL).setFontColor(COLOUR_HEADER_TEXT_LIGHT);
+      continue;
+    }
     const selNorm = String(val).toLowerCase();
-    let bg;
-    if      (selNorm.includes('hidden'))   bg = COLOUR_HIDDEN_BG;
-    else if (selNorm.includes('optional')) bg = COLOUR_OPTIONAL_LIGHT;
-    else                                   bg = COLOUR_MANDATORY;
-    builder.getRange(insertRow, col).setBackground(bg);
+    let bg, fg;
+    if      (selNorm.includes('hidden'))   { bg = COLOUR_HIDDEN_BG;     fg = COLOUR_HEADER_TEXT_LIGHT; }
+    else if (selNorm.includes('optional')) { bg = COLOUR_OPTIONAL_LIGHT; fg = COLOUR_HEADER_TEXT_LIGHT; }
+    else                                   { bg = COLOUR_MANDATORY;      fg = COLOUR_HEADER_TEXT_DARK;  }
+    cell.setBackground(bg).setFontColor(fg);
   }
 
   Logger.log(`Catalogue row appended at row ${insertRow}: ${projectName}`);
@@ -1191,9 +1377,10 @@ function alert_(msg) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Menu: onOpen()
 // Runs automatically when the spreadsheet is opened. Adds the
-// '📋 ToL Manifest Tools' menu with three items:
+// '📋 ToL Manifest Tools' menu with four items:
 //   • 🔍 Check catalogue for identical manifest  (top-level, easy access)
 //   • 📂 Load from catalogue into row 2          (top-level, easy access)
+//   • 🔄 Sync SOP comments to builder headers    (top-level — run after SOP edits)
 //   • Generate manifest + SOP > ▶ Run generator  (in submenu — prevents
 //     accidental triggering of the full generation pipeline)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1201,11 +1388,12 @@ function alert_(msg) {
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
 
-  // Top-level menu: catalogue checker is immediately accessible
+  // Top-level menu: catalogue and SOP sync are immediately accessible
   // Generate manifest lives in a submenu so it is harder to trigger accidentally
   ui.createMenu('📋 ToL Manifest Tools')
     .addItem('🔍 Check catalogue for identical manifest', 'checkCatalogue')
     .addItem('📂 Load from catalogue into row 2', 'loadFromCatalogue')
+    .addItem('🔄 Sync SOP comments to builder headers', 'syncSopCommentsToBuilder')
     .addSeparator()
     .addSubMenu(
       ui.createMenu('Generate manifest + SOP')
