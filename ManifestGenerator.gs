@@ -707,14 +707,16 @@ function loadFromCatalogue() {
   const builder = ss.getSheetByName(BUILDER_SHEET_NAME);
   if (!builder) { alert_(`Sheet "${BUILDER_SHEET_NAME}" not found.`); return; }
 
-  // Refresh row 3 dropdowns first so validation matches the current row 5
-  // system requirements before we write catalogue values into row 3 below.
-  applyBuilderDropdowns_(builder);
+  // Deliberately does NOT call applyBuilderDropdowns_() here — that rebuilds
+  // each cell's data validation rule from scratch, which wipes any custom
+  // dropdown item colours the SM team has set up in the sheet UI (Apps
+  // Script's data validation API can't read or restore those colours).
+  // Instead, validity below is checked against each cell's *existing* live
+  // dropdown list, left completely untouched.
 
-  const lastCol  = builder.getLastColumn();
-  const row1     = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
-  const row5vals = builder.getRange(ROW_SYSTEM_REQ,    1, 1, lastCol).getValues()[0];
-  const lastRow  = builder.getLastRow();
+  const lastCol = builder.getLastColumn();
+  const row1    = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
+  const lastRow = builder.getLastRow();
 
   if (lastRow < CATALOGUE_DATA_START) {
     alert_('No catalogue entries found. The catalogue section starts at row ' + CATALOGUE_DATA_START + '.'); return;
@@ -780,13 +782,15 @@ function loadFromCatalogue() {
   //   • Full selection string → write directly into row 3, if it's still a
   //     valid choice for that column's current dropdown
   //   • Old TRUE checkbox     → map to "Mandatory, visible"
-  //   • Empty / FALSE         → write "select option" (unset) — only valid on
-  //     non-system-mandatory columns
-  // System-mandatory columns have no "unset" option in their dropdown (see
-  // BUILDER_DROPDOWN_OPTIONS_MANDATORY), so if the catalogue value isn't a
-  // valid choice for that column (e.g. it was excluded, or it's a value only
-  // valid on optional columns), the cell is left unchanged rather than being
-  // written with a value that violates its data validation rule.
+  //   • Empty / FALSE         → write "select option" (unset)
+  // Some columns (e.g. the "must stay visible" fields) have a dropdown with
+  // only a single allowed value and no "unset" option — if the catalogue
+  // value isn't in that cell's actual current dropdown list, the cell is
+  // left unchanged rather than being written with a value that would violate
+  // its data validation rule. Validity is checked against each cell's live
+  // dropdown (via getDataValidation()) rather than a hard-coded list, so this
+  // works correctly for any column's dropdown without needing to touch/rebuild
+  // it — which would also strip any custom item colours set up in the sheet.
   // Columns that don't appear in the catalogue (new columns added since) are left as-is.
   let written = 0;
   const skipped = [];
@@ -807,17 +811,13 @@ function loadFromCatalogue() {
       newSel = 'select option';
     }
 
-    const sysReq         = String(row5vals[col - 1] || '').trim().toLowerCase();
-    const isSysMandatory = sysReq.includes('mandatory');
-    const allowedList    = isSysMandatory ? BUILDER_DROPDOWN_OPTIONS_MANDATORY : BUILDER_DROPDOWN_OPTIONS_OPTIONAL;
-    const isValidChoice  = allowedList.some(opt => opt.toLowerCase() === newSel.toLowerCase());
-
-    if (!isValidChoice) {
+    const cell = builder.getRange(ROW_SELECTION, col);
+    if (!isValueAllowedByCellDropdown_(cell, newSel)) {
       skipped.push(String(row1[col - 1] || `column ${col}`).trim());
       continue;
     }
 
-    builder.getRange(ROW_SELECTION, col).setValue(newSel);
+    cell.setValue(newSel);
     written++;
   }
 
@@ -830,12 +830,31 @@ function loadFromCatalogue() {
 
 ` +
     (skipped.length > 0
-      ? `⚠️ ${skipped.length} column(s) left unchanged because the catalogue value isn't a valid choice for them now (e.g. a system-mandatory column with no matching entry in the catalogue): ${skipped.join(', ')}
+      ? `⚠️ ${skipped.length} column(s) left unchanged because the catalogue value isn't a valid choice in their current dropdown (e.g. a "must stay visible" column with no matching entry in the catalogue): ${skipped.join(', ')}
 
 `
       : '') +
     `You can now adjust any selections before generating the manifest.`
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper: isValueAllowedByCellDropdown_(cell, value)
+// Checks value against cell's own live "value in list" data validation rule
+// (case-insensitive), without ever reading or rebuilding the rule itself —
+// used instead of a hard-coded option list so we never have to call
+// setDataValidation() (which would silently strip any custom dropdown item
+// colours configured in the sheet UI; Apps Script cannot read or restore
+// those colours). Cells with no rule, or a rule that isn't a value-in-list,
+// are treated as unrestricted.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function isValueAllowedByCellDropdown_(cell, value) {
+  const rule = cell.getDataValidation();
+  if (!rule) return true;
+  if (rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) return true;
+  const allowedValues = rule.getCriteriaValues()[0];
+  return allowedValues.some(v => String(v).toLowerCase() === String(value).toLowerCase());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
