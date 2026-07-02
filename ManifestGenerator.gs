@@ -1,32 +1,64 @@
 /**
  * ToL Manifest Generator
  * ──────────────────────
- * Reads the "all_manifest_builder_v1.0" sheet and generates a tailored
+ * Reads an "all_manifest_builder_v1.0" sheet and generates a tailored
  * Sample Manifest and accompanying SOP documents for a given ToL project.
  *
- * WHAT IT GENERATES (per run):
+ * TWO KINDS OF SPREADSHEET, ONE SHARED SCRIPT:
+ *   This same script file is bound to two different kinds of spreadsheet,
+ *   which are otherwise identical and fully self-contained — each with its
+ *   own independent column structure, row 3 selections, and Manifest
+ *   Catalogue. Which menu appears is decided at open-time by comparing the
+ *   active spreadsheet's ID against MASTER_SPREADSHEET_ID (see Constants
+ *   below):
+ *
+ *   • THE MASTER MANIFEST — the single canonical spreadsheet the SM team
+ *     maintains and preserves untouched. Shows the SM Only menu. Nobody
+ *     generates directly from the master — see "Create New Builder Template
+ *     for a PI" below.
+ *
+ *   • A PI BUILDER TEMPLATE — a full, standalone Drive copy of the master
+ *     (made via SM Only > Create New Builder Template for a PI), handed to
+ *     one PI to fill in their own row 3 selections and project name. Shows
+ *     the ToL Manifest Tools menu. Because copying a spreadsheet also copies
+ *     its bound script, every template runs this exact same file — but
+ *     since its ID never matches MASTER_SPREADSHEET_ID, it always renders
+ *     the PI-facing menu instead. Checking, loading, and generating all work
+ *     entirely within that one copy — its Manifest Catalogue grows on its
+ *     own as manifests are generated from it; nothing ever reaches back into
+ *     the master. The only thing the master/template split changes is which
+ *     menu is shown, so that the master itself can never be generated from.
+ *
+ * WHAT GENERATE MY MANIFEST BUILDS (per run, from a PI template):
  *   1. A new Google Sheets manifest file — tab named "Metadata Entry",
  *      with 1920 data rows, colour-coded headers, dropdowns, and date
- *      validation. Saved to the shared output folder in Google Drive.
+ *      validation. Saved to a per-project subfolder in the shared output
+ *      folder in Google Drive.
  *   2. An internal SOP Google Doc — all columns listed, hidden columns
- *      marked [HIDDEN] and greyed. Saved to the shared output folder.
+ *      marked [HIDDEN] and greyed. Saved to the same subfolder.
  *   3. A partner-facing SOP Google Doc — hidden columns omitted, with a
- *      note explaining they require no input. Saved to the shared folder.
+ *      note explaining they require no input. Saved to the same subfolder.
  *   4. A partner SOP tab inside the manifest Google Sheet.
- *   5. A new row in the ToL Manifest Catalogue section of the builder
- *      sheet — col A highlighted yellow, other cells colour-coded to
- *      match the manifest headers (green/blue/white). For SM team review.
+ *   5. A new row in this builder's own Manifest Catalogue section — col A
+ *      highlighted yellow, other cells colour-coded to match the manifest
+ *      headers (green/blue/white). For SM team review. If the project name
+ *      & version matches an existing catalogue entry, an iteration suffix
+ *      ("-1", "-2", …) is appended.
  *
- * MENU (📋 ToL Manifest Tools):
- *   • 🔍 Check catalogue for identical manifest  → checkCatalogue()
- *   • 📂 Load from catalogue into row 2          → loadFromCatalogue()
+ * MENU on the master manifest (SM Only):
+ *   • 🆕 Create New Builder Template for a PI    → createBuilderTemplate()
  *   • 🔄 Sync SOP comments to builder headers    → syncSopCommentsToBuilder()
- *   • Generate manifest + SOP > ▶ Run generator  → generateManifest()
+ *
+ * MENU on a PI builder template (📋 ToL Manifest Tools):
+ *   • 🔍 Check catalogue for identical manifest  → checkCatalogue()
+ *   • 📂 Load from catalogue into row 3          → loadFromCatalogue()
+ *   • ▶ Generate my manifest                     → generateManifest()
  *
  * BUILDER SHEET STRUCTURE (all_manifest_builder_v1.0):
- *   Row 1 — Column names  |  Col A = project name & version
- *   Row 2 — Project selections (dropdown per column). The dropdown list
- *           offered depends on row 4 (system-mandatory columns get a
+ *   Row 1 — Column group labels (reference only, not used by script)
+ *   Row 2 — Column names  |  Col A = project name & version
+ *   Row 3 — Project selections (dropdown per column). The dropdown list
+ *           offered depends on row 5 (system-mandatory columns get a
  *           restricted 3-option list; all others get the full 5-option
  *           list, including the unset placeholder):
  *             "Mandatory, visible"                  → mandatory header
@@ -40,21 +72,29 @@
  *                                                    → hidden column,
  *                                                      every data row
  *                                                      pre-filled with the
- *                                                      value from row 6
+ *                                                      value from row 7
  *             "select option" / blank                → unset — silently
  *                                                       excluded from the
  *                                                       manifest (no error)
  *           There is no "Exclude" option in the UI — leaving a column
  *           unset has the same effect.
- *   Row 3 — Column order numbers (optional; blank = keep natural order)
- *   Row 4 — System requirements (Mandatory/Optional) — determines which
- *            row 2 dropdown list a column gets
- *   Row 5 — Manifest requirements (reference only, not used by script)
- *   Row 6 — Bespoke autopopulate values — read by the script to pre-fill
- *            hidden columns whose row 2 selection is "...use bespoke term"
- *   Rows 12+ — ToL Manifest Catalogue (one row per past manifest)
+ *   Row 4 — Column order numbers (optional; blank = keep natural order)
+ *   Row 5 — System requirements (Mandatory/Optional) — determines which
+ *            row 3 dropdown list a column gets
+ *   Row 6 — Manifest requirements (reference only, not used by script)
+ *   Row 7 — Bespoke autopopulate values — read by the script to pre-fill
+ *            hidden columns whose row 3 selection is "...use bespoke term"
+ *   Row 8 — Notes (reference only, not used by script)
+ *   Rows 14+ — ToL Manifest Catalogue (one row per past manifest)
  *
  * CONFIGURATION (edit the constants below):
+ *   MASTER_SPREADSHEET_ID — REQUIRED ONE-TIME SETUP. Must be set, from
+ *                         within the master manifest itself, to the master's
+ *                         own spreadsheet ID (from its URL). Until this is
+ *                         set correctly, every spreadsheet running this
+ *                         script — including the real master — will render
+ *                         the PI-facing "ToL Manifest Tools" menu, since none
+ *                         of them will match the placeholder ID.
  *   BUILDER_SHEET_NAME  — name of the builder tab
  *   DATA_VAL_SHEET_NAME — name of the Data Validation tab
  *   SOP_DOC_ID          — Google Doc ID of the master SOP (fetched live)
@@ -75,25 +115,35 @@
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+// ID of the master manifest spreadsheet — REQUIRED ONE-TIME SETUP. From
+// inside the master spreadsheet, open its URL (docs.google.com/spreadsheets/
+// d/[ID]/edit) and paste [ID] here. This is how onOpen() and every catalogue
+// function tell the master apart from a PI builder template copy.
+const MASTER_SPREADSHEET_ID = 'PUT_MASTER_SPREADSHEET_ID_HERE';
+
 const BUILDER_SHEET_NAME  = 'all_manifest_builder_v1.0';
 const DATA_VAL_SHEET_NAME = 'Data Validation';
 const MANIFEST_TAB_NAME   = 'Metadata Entry';
 const MANIFEST_DATA_ROWS  = 1920;
 
 // Builder sheet row numbers
-const ROW_PROJECT_NAME  = 1;   // Col A: project name & version
-const ROW_SELECTION     = 2;   // Include/exclude/hidden choices
-const ROW_COL_ORDER     = 3;   // Optional column ordering numbers
-const ROW_SYSTEM_REQ    = 4;   // System requirements (Mandatory/Optional)
-const ROW_MANIFEST_REQ  = 5;   // Manifest requirements (reference only)
-const ROW_BESPOKE       = 6;   // Bespoke autopopulate values for hidden columns
+// Row 1 is a group-label row (e.g. "mandatory fields, must be visible in all
+// manifests") and is not read by the script.
+const ROW_PROJECT_NAME  = 2;   // Col A: project name & version
+const ROW_SELECTION     = 3;   // Include/exclude/hidden choices
+const ROW_COL_ORDER     = 4;   // Optional column ordering numbers
+const ROW_SYSTEM_REQ    = 5;   // System requirements (Mandatory/Optional)
+const ROW_MANIFEST_REQ  = 6;   // Manifest requirements (reference only)
+const ROW_BESPOKE       = 7;   // Bespoke autopopulate values for hidden columns
+// Row 8 is a free-text Notes row (design-process comments) — reference only,
+// not read by the script.
 
 // Catalogue section
-const CATALOGUE_HEADER_ROW = 11;  // "Manifest names and versions"
-const CATALOGUE_DATA_START = 12;  // First project row
+const CATALOGUE_HEADER_ROW = 13;  // "Manifest names and versions"
+const CATALOGUE_DATA_START = 14;  // First project row
 
 // Project name cell
-const PROJECT_NAME_CELL = 'A1';
+const PROJECT_NAME_CELL = 'A2';
 
 // Date column
 const DATE_COLUMN_NAME = 'DATE_OF_COLLECTION';
@@ -101,10 +151,11 @@ const DATE_COLUMN_NAME = 'DATE_OF_COLLECTION';
 // SOP Google Doc ID (fetched live at run-time)
 const SOP_DOC_ID = '10WMIZ9GuB0hj5pBzFkz1U2V3_KwIFH-3cAud6h3-Gow';
 
-// Shared output folder — all generated files are moved here after creation.
+// Shared output folder — a per-project subfolder is created/reused inside this
+// folder on every run, and all generated files are moved there after creation.
 // To change: replace the ID with the new folder ID from the Drive URL.
-// Current: https://drive.google.com/drive/folders/1tnQ7ciifegXd_4HUPcZ4me4kdBtRxnii
-const OUTPUT_FOLDER_ID = '1tnQ7ciifegXd_4HUPcZ4me4kdBtRxnii';
+// Current: https://drive.google.com/drive/folders/1hGB3WXCTcc78oW230iizswW5jQd2-5uE
+const OUTPUT_FOLDER_ID = '1hGB3WXCTcc78oW230iizswW5jQd2-5uE';
 
 // ─── Colours ──────────────────────────────────────────────────────────────────
 // Single source of truth — changing these updates both sheet headers and SOP highlights.
@@ -164,12 +215,37 @@ const HIDDEN_BESPOKE_TRIGGERS = [SEL_MANDATORY_HIDE_BESPOKE, SEL_INCLUDE_HIDE_BE
 const ALL_HIDDEN_TRIGGERS     = [...HIDDEN_NC_TRIGGERS, ...HIDDEN_BESPOKE_TRIGGERS];
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Helper: isMasterSpreadsheet_()
+// Every spreadsheet running this script is either the master manifest itself,
+// or a PI builder template copy of it — copies are otherwise identical and
+// fully self-contained, each with its own independent catalogue. This is the
+// one thing that tells them apart, purely so the correct menu is shown and
+// so the generator (and the catalogue actions that go with it) can only ever
+// run from a copy, never the master — see the "TWO KINDS OF SPREADSHEET" note
+// at the top of this file for the full picture.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function isMasterSpreadsheet_() {
+  return SpreadsheetApp.getActiveSpreadsheet().getId() === MASTER_SPREADSHEET_ID;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN: generateManifest()
-// Orchestrates the full manifest generation pipeline (steps 1–17).
-// Called from the menu: 📋 ToL Manifest Tools > Generate manifest + SOP > ▶ Run generator
+// Orchestrates the full manifest generation pipeline (steps 2–17 — there is
+// no step 1; it used to rebuild row 3 dropdowns and was removed to stop
+// stripping custom dropdown item colours, see the comment just below).
+// Called from the menu: 📋 ToL Manifest Tools > ▶ Generate my manifest
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function generateManifest() {
+  if (isMasterSpreadsheet_()) {
+    alert_(
+      '⚠️ Generation must be run from a PI builder template, not the master manifest.\n\n' +
+      'Use SM Only > Create New Builder Template for a PI to make one.'
+    );
+    return;
+  }
+
   const ss      = SpreadsheetApp.getActiveSpreadsheet();
   const builder = ss.getSheetByName(BUILDER_SHEET_NAME);
   const dvSheet = ss.getSheetByName(DATA_VAL_SHEET_NAME);
@@ -177,8 +253,11 @@ function generateManifest() {
   if (!builder) { alert_(`Sheet "${BUILDER_SHEET_NAME}" not found.`); return; }
   if (!dvSheet)  { alert_(`Sheet "${DATA_VAL_SHEET_NAME}" not found.`); return; }
 
-  // ── Step 1: Apply row 2 dropdowns (fast, harmless every run) ─────────────
-  applyBuilderDropdowns_(builder);
+  // Deliberately does NOT rebuild row 3's data validation here — this
+  // template already inherited working dropdowns from the master when it
+  // was copied, and rebuilding them (via setDataValidation()) would strip
+  // any custom dropdown item colours set up in the sheet UI, since Apps
+  // Script's data validation API can't read or restore those colours.
 
   // ── Step 2: Read & validate project name ─────────────────────────────────
   let projectName = String(builder.getRange(PROJECT_NAME_CELL).getValue() || '').trim();
@@ -199,14 +278,15 @@ function generateManifest() {
     builder.getRange(PROJECT_NAME_CELL).setValue(projectName);
   }
 
-  // ── Step 3: Check catalogue for exact duplicate before doing anything expensive ──
-  // Protects against accidental duplicate generation even if the PI skipped
-  // the manual 🔍 Check catalogue step.
+  // ── Step 3: Check this builder's own catalogue for an exact duplicate
+  // before doing anything expensive. Protects against accidental duplicate
+  // generation even if the PI skipped the manual 🔍 Check catalogue step.
   const lastCol  = builder.getLastColumn();
   const row1     = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
   const row2     = builder.getRange(ROW_SELECTION,    1, 1, lastCol).getValues()[0];
 
-  const existingExact = findExactCatalogueMatches_(builder, lastCol, row1, row2);
+  const currentFull   = buildSelectionMap_(row1, row2, lastCol);
+  const existingExact = findExactCatalogueMatches_(builder, lastCol, row1, currentFull);
   if (existingExact.length > 0) {
     const matchList = existingExact.map(m => `  • ${m}`).join('\n');
     const ui  = SpreadsheetApp.getUi();
@@ -222,6 +302,21 @@ function generateManifest() {
       alert_('Generation cancelled. Use 📂 Load from catalogue to work with an existing manifest.');
       return;
     }
+  }
+
+  // ── Step 3b: Work out the iteration suffix ───────────────────────────────
+  // If this project name & version already appears in this builder's own
+  // catalogue, append "-1", "-2", etc. so regenerated manifests are clearly
+  // distinguishable.
+  const iteration    = getNextIteration_(builder, projectName);
+  const versionedName = iteration > 0 ? `${projectName}-${iteration}` : projectName;
+
+  // ── Step 3c: Get/create the per-project output subfolder ────────────────
+  let projectFolder = null;
+  try {
+    projectFolder = getOrCreateProjectFolder_(versionedName);
+  } catch (e) {
+    Logger.log(`⚠️  Could not create/access project subfolder "${versionedName}": ${e.message}`);
   }
 
   // ── Step 4: Fetch live SOP descriptions ──────────────────────────────────
@@ -268,7 +363,7 @@ function generateManifest() {
     const prefillVal  = inclusion === 'hidden_nc' ? 'NOT_COLLECTED'
                       : inclusion === 'hidden_bespoke' ? bespokeVal : null;
 
-    // Column order number from row 3 (blank = null = keep natural order)
+    // Column order number from row 4 (blank = null = keep natural order)
     const orderVal = row3[col - 1];
     const orderNum = (orderVal !== null && orderVal !== '' && !isNaN(Number(orderVal)))
       ? Number(orderVal) : null;
@@ -289,11 +384,11 @@ function generateManifest() {
 
   // ── Step 8: Require at least one selected column ─────────────────────────
   if (rawColumns.length === 0) {
-    alert_('No columns are selected in row 2. Please choose an option for at least one column.');
+    alert_('No columns are selected in row 3. Please choose an option for at least one column.');
     return;
   }
 
-  // ── Step 9: Apply column ordering from row 3 ─────────────────────────────
+  // ── Step 9: Apply column ordering from row 4 ─────────────────────────────
   // Columns with an order number sort by that number first;
   // columns without (null) retain their natural left-to-right order after numbered ones.
   const numbered   = rawColumns.filter(c => c.orderNum !== null).sort((a, b) =>
@@ -304,13 +399,13 @@ function generateManifest() {
 
   // ── Step 10: Create the Google Sheets file ───────────────────────────────
   const today    = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  const safeName = projectName.replace(/[\\/:*?"<>|]/g, '_');
+  const safeName = versionedName.replace(/[\\/:*?"<>|]/g, '_');
   const baseName = `ToL_Manifest_${safeName}_${today}`;
   const newSS    = SpreadsheetApp.create(baseName);
   const manifest = newSS.getActiveSheet();
   manifest.setName(MANIFEST_TAB_NAME);
-  // Move manifest to shared output folder immediately after creation
-  moveToOutputFolder_(newSS.getId());
+  // Move manifest to the per-project output subfolder immediately after creation
+  moveToOutputFolder_(newSS.getId(), projectFolder);
 
   const numCols = columns.length;
 
@@ -386,18 +481,18 @@ function generateManifest() {
       applyDateFormatting_(manifest, colNum, dataStart, dataEnd);
     }
 
-    // Pre-fill hidden columns with NOT_COLLECTED or bespoke value from row 6
+    // Pre-fill hidden columns with NOT_COLLECTED or bespoke value from row 7
     if (col.prefillVal !== null && col.prefillVal !== '') {
       const prefillRange = manifest.getRange(dataStart, colNum, MANIFEST_DATA_ROWS, 1);
       prefillRange.setValues(Array(MANIFEST_DATA_ROWS).fill([col.prefillVal]));
     } else if (col.inclusion === 'hidden_bespoke') {
-      // Bespoke selected but row 6 is empty — warn via header cell comment
+      // Bespoke selected but row 7 is empty — warn via header cell comment
       const existing = manifest.getRange(1, colNum).getComment()
         ? manifest.getRange(1, colNum).getComment().getText() + '\n\n' : '';
       manifest.getRange(1, colNum).setComment(
         existing +
-        '⚠️ Bespoke term selected in row 2 but no value found in row 6 of the builder sheet. ' +
-        'Please populate this column manually or add the term to row 6 and regenerate.'
+        '⚠️ Bespoke term selected in row 3 but no value found in row 7 of the builder sheet. ' +
+        'Please populate this column manually or add the term to row 7 and regenerate.'
       );
     }
 
@@ -420,80 +515,119 @@ function generateManifest() {
   hiddenCols.slice().reverse().forEach(c => manifest.hideColumns(c));
 
   // ── Step 14: Add partner-facing SOP tab ───────────────────────────────────
-  addPartnerSopTab_(newSS, columns, today, sopComments, projectName);
+  addPartnerSopTab_(newSS, columns, today, sopComments, versionedName);
 
   // ── Step 15: Create two SOP Google Docs ──────────────────────────────────
-  const internalDoc = createSopDoc_(baseName, columns, today, sopComments, projectName, false);
-  moveToOutputFolder_(internalDoc.getId());
-  const partnerDoc  = createSopDoc_(baseName, columns, today, sopComments, projectName, true);
-  moveToOutputFolder_(partnerDoc.getId());
+  const internalDoc = createSopDoc_(baseName, columns, today, sopComments, versionedName, false);
+  moveToOutputFolder_(internalDoc.getId(), projectFolder);
+  const partnerDoc  = createSopDoc_(baseName, columns, today, sopComments, versionedName, true);
+  moveToOutputFolder_(partnerDoc.getId(), projectFolder);
 
-  // ── Step 16: Append catalogue row to builder sheet ───────────────────────
-  const catRowNum = appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2);
+  // ── Step 16: Append catalogue row to this builder's own sheet ────────────
+  const catRowNum = appendCatalogueRow_(builder, versionedName, lastCol, row1, row2);
 
   // ── Step 17: Summary ─────────────────────────────────────────────────────
   const sheetUrl   = newSS.getUrl();
   const internalUrl = internalDoc.getUrl();
   const partnerUrl  = partnerDoc.getUrl();
+  const folderUrl   = projectFolder ? projectFolder.getUrl() : null;
   Logger.log(`Manifest:     ${sheetUrl}`);
   Logger.log(`Internal SOP: ${internalUrl}`);
   Logger.log(`Partner SOP:  ${partnerUrl}`);
+  Logger.log(`Folder:       ${folderUrl || '(subfolder unavailable — files saved to Drive root)'}`);
 
   alert_(
     `✅ Generation complete!\n\n` +
     `📊 Manifest:\n${sheetUrl}\n\n` +
     `📄 Internal SOP:\n${internalUrl}\n\n` +
     `📄 Partner SOP:\n${partnerUrl}\n\n` +
-    `Project: ${projectName} | Columns: ${numCols} (${hiddenCols.length} hidden)\n\n` +
-    `📋 Catalogue row added at row ${catRowNum} of the builder sheet (highlighted yellow).\n` +
-    `Please copy this row to the master manifest catalogue when ready.\n\n` +
+    `Project: ${versionedName} | Columns: ${numCols} (${hiddenCols.length} hidden)\n\n` +
+    (folderUrl
+      ? `📁 All files saved to the "${versionedName}" folder:\n${folderUrl}\n\n`
+      : `⚠️ Could not access the shared output folder — files were saved to your Drive root instead.\n\n`) +
+    `📋 Catalogue row added at row ${catRowNum} of this builder sheet (highlighted yellow).\n\n` +
+    `If this looks good to you, or if you're unsure, get in touch with the ToL Sample Management team at treeoflifesamples@sanger.ac.uk. If it's not what you need, update your selections and regenerate.\n\n` +
     `All URLs saved to Apps Script log.`
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Helper: findExactCatalogueMatches_(builder, lastCol, row1, row2)
-// Returns an array of catalogue entry names whose column selections exactly
-// match the current row 2. Used by generateManifest() to warn before
-// creating a duplicate, and by checkCatalogue() for its exact-match report.
+// Helper: buildSelectionMap_(row1, row2, lastCol)
+// Builds a Map of colName → normalised (lowercase) selection string from a
+// builder sheet's row 2 (names) and row 3 (selections), skipping unset/
+// excluded columns. Used to describe "what's currently selected".
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function findExactCatalogueMatches_(builder, lastCol, row1, row2) {
-  // Build a normalised map of the current selections
-  const currentFull = new Map();
+function buildSelectionMap_(row1, row2, lastCol) {
+  const map = new Map();
   for (let col = 2; col <= lastCol; col++) {
     const colName = String(row1[col - 1] || '').trim();
     if (!colName) continue;
     const sel     = String(row2[col - 1] || '').trim();
     const selNorm = sel.toLowerCase();
     if (sel && selNorm !== SEL_UNSET && selNorm !== SEL_EXCLUDE) {
-      currentFull.set(colName, selNorm);
+      map.set(colName, selNorm);
     }
   }
+  return map;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper: readCatalogueRows_(builder, lastCol)
+// Reads every catalogue row (14+) from the given builder sheet. Returns an
+// empty array if the sheet has no catalogue entries yet.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function readCatalogueRows_(builder, lastCol) {
+  const lastRow = builder.getLastRow();
+  return lastRow >= CATALOGUE_DATA_START
+    ? builder.getRange(CATALOGUE_DATA_START, 1, lastRow - CATALOGUE_DATA_START + 1, lastCol).getValues()
+    : [];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper: catalogueRowToMap_(catRow, row1, lastCol)
+// Converts one raw catalogue row into a Map of colName → normalised selection
+// string, using row1 (the builder's own row 2 names) for column mapping.
+// Supports both old TRUE/FALSE checkboxes and the current full-selection-string
+// storage.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function catalogueRowToMap_(catRow, row1, lastCol) {
+  const map = new Map();
+  for (let col = 2; col <= lastCol; col++) {
+    const colName = String(row1[col - 1] || '').trim();
+    if (!colName) continue;
+    const val = catRow[col - 1];
+    let selStr = '';
+    if (val === true)                                           selStr = SEL_MANDATORY_VISIBLE;
+    else if (typeof val === 'string' && val.trim().length > 0) selStr = val.trim().toLowerCase();
+    if (selStr) map.set(colName, selStr);
+  }
+  return map;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper: findExactCatalogueMatches_(builder, lastCol, row1, currentFull)
+// Returns an array of catalogue entry names — from this builder's own
+// catalogue — whose column selections exactly match currentFull (built by
+// buildSelectionMap_() from the current row 3). Used by generateManifest()
+// to warn before creating a duplicate, and by checkCatalogue() for its
+// exact-match report. Every builder (master or PI template copy) has its own
+// independent catalogue — this never reaches into another spreadsheet.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function findExactCatalogueMatches_(builder, lastCol, row1, currentFull) {
   if (currentFull.size === 0) return [];
 
-  const lastRow = builder.getLastRow();
-  if (lastRow < CATALOGUE_DATA_START) return [];
-
-  const catData = builder.getRange(
-    CATALOGUE_DATA_START, 1, lastRow - CATALOGUE_DATA_START + 1, lastCol
-  ).getValues();
+  const catData = readCatalogueRows_(builder, lastCol);
 
   const exactMatches = [];
   catData.forEach(catRow => {
     const manifestName = String(catRow[0] || '').trim();
     if (!manifestName) return;
 
-    const catFull = new Map();
-    for (let col = 2; col <= lastCol; col++) {
-      const colName = String(row1[col - 1] || '').trim();
-      if (!colName) continue;
-      const val = catRow[col - 1];
-      let selStr = '';
-      if (val === true)                                           selStr = SEL_MANDATORY_VISIBLE;
-      else if (typeof val === 'string' && val.trim().length > 0) selStr = val.trim().toLowerCase();
-      if (selStr) catFull.set(colName, selStr);
-    }
+    const catFull = catalogueRowToMap_(catRow, row1, lastCol);
 
     // Exact match: same column set and same selection for every column
     if (currentFull.size !== catFull.size) return;
@@ -505,14 +639,50 @@ function findExactCatalogueMatches_(builder, lastCol, row1, row2) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Helper: getNextIteration_(builder, projectName)
+// Looks through this builder's own catalogue col A entries for names matching
+// projectName, either bare (first generation) or with a trailing "-N"
+// iteration suffix from a previous regeneration. Returns 0 if no matching
+// entry exists yet (no suffix needed), otherwise the next iteration number
+// (1, 2, 3, …). Used by generateManifest() so regenerating the same project
+// name & version doesn't overwrite/duplicate a previous catalogue entry or
+// output files.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function getNextIteration_(builder, projectName) {
+  const lastCol = builder.getLastColumn();
+  const names   = readCatalogueRows_(builder, lastCol).map(r => String(r[0] || '').trim());
+
+  const escaped = projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^${escaped}(?:-(\\d+))?$`, 'i');
+
+  let found = false;
+  let maxIteration = 0;
+  names.forEach(name => {
+    const m = name.match(pattern);
+    if (!m) return;
+    found = true;
+    const n = m[1] ? parseInt(m[1], 10) : 0;
+    if (n > maxIteration) maxIteration = n;
+  });
+
+  return found ? maxIteration + 1 : 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN: checkCatalogue()
-// Compares the current row 2 selections against every named entry in the
+// Compares the current row 3 selections against every named entry in the
 // catalogue section. Reports exact matches (same columns + same nuance)
 // and near matches (same columns, different mandatory/optional/hidden status).
 // Called from the menu: 📋 ToL Manifest Tools > 🔍 Check catalogue
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function checkCatalogue() {
+  if (isMasterSpreadsheet_()) {
+    alert_('⚠️ Check catalogue is run from a PI builder template, not the master manifest itself.');
+    return;
+  }
+
   const ss      = SpreadsheetApp.getActiveSpreadsheet();
   const builder = ss.getSheetByName(BUILDER_SHEET_NAME);
   if (!builder) { alert_(`Sheet "${BUILDER_SHEET_NAME}" not found.`); return; }
@@ -521,34 +691,22 @@ function checkCatalogue() {
   const row1    = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
   const row2    = builder.getRange(ROW_SELECTION,    1, 1, lastCol).getValues()[0];
 
-  // Build current selection maps:
-  //   currentCols  — Set of selected column names (for near-match comparison)
-  //   currentFull  — Map of colName → normalised selection string (for exact match)
-  const currentCols = new Set();
-  const currentFull = new Map();
-
-  for (let col = 2; col <= lastCol; col++) {
-    const colName = String(row1[col - 1] || '').trim();
-    if (!colName) continue;
-    const sel     = String(row2[col - 1] || '').trim();
-    const selNorm = sel.toLowerCase();
-    if (sel && selNorm !== SEL_UNSET && selNorm !== SEL_EXCLUDE) {
-      currentCols.add(colName);
-      currentFull.set(colName, selNorm);
-    }
-  }
+  // currentFull — Map of colName → normalised selection string, from this
+  // builder's own row 3. currentCols is just its key set.
+  const currentFull = buildSelectionMap_(row1, row2, lastCol);
+  const currentCols = new Set(currentFull.keys());
 
   if (currentCols.size === 0) {
-    alert_('No columns are currently selected in row 2. Please make selections before checking the catalogue.');
+    alert_('No columns are currently selected in row 3. Please make selections before checking the catalogue.');
     return;
   }
 
-  const lastRow = builder.getLastRow();
-  if (lastRow < CATALOGUE_DATA_START) {
+  // Scan this builder's own catalogue rows.
+  const catData = readCatalogueRows_(builder, lastCol);
+  if (catData.length === 0) {
     alert_('No catalogue entries found (catalogue starts at row ' + CATALOGUE_DATA_START + ').'); return;
   }
 
-  const catData      = builder.getRange(CATALOGUE_DATA_START, 1, lastRow - CATALOGUE_DATA_START + 1, lastCol).getValues();
   const exactMatches = [];
   const nearMatches  = [];  // same columns, different mandatory/optional/hidden nuance
 
@@ -556,25 +714,8 @@ function checkCatalogue() {
     const manifestName = String(catRow[0] || '').trim();
     if (!manifestName) return;
 
-    // Build catalogue entry maps
-    const catCols = new Set();
-    const catFull = new Map();
-
-    for (let col = 2; col <= lastCol; col++) {
-      const colName = String(row1[col - 1] || '').trim();
-      if (!colName) continue;
-      const val     = catRow[col - 1];
-      // Support both old TRUE/FALSE checkboxes and new full-string storage
-      let selStr = '';
-      if (val === true)                                            selStr = SEL_MANDATORY_VISIBLE;
-      else if (typeof val === 'string' && val.trim().length > 0)  selStr = val.trim().toLowerCase();
-      // false / blank / null = excluded
-
-      if (selStr) {
-        catCols.add(colName);
-        catFull.set(colName, selStr);
-      }
-    }
+    const catFull = catalogueRowToMap_(catRow, row1, lastCol);
+    const catCols = new Set(catFull.keys());
 
     // Same column set?
     const sameColumns =
@@ -631,29 +772,36 @@ function checkCatalogue() {
 //   Replace the prompt() dialog below with a HtmlService sidebar that renders
 //   a search input and a card-per-manifest list (showing mandatory/optional/hidden
 //   counts as coloured badges). On selection, it calls google.script.run to write
-//   the row 2 values back. Build with HtmlService.createHtmlOutputFromFile() and
+//   the row 3 values back. Build with HtmlService.createHtmlOutputFromFile() and
 //   SpreadsheetApp.getUi().showSidebar(). The catalogue data can be passed into
 //   the HTML template via a scriptlet or via google.script.run return value.
 //   See: https://developers.google.com/apps-script/guides/html/communication
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function loadFromCatalogue() {
+  if (isMasterSpreadsheet_()) {
+    alert_('⚠️ Load from catalogue is run from a PI builder template, not the master manifest itself.');
+    return;
+  }
+
   const ss      = SpreadsheetApp.getActiveSpreadsheet();
   const builder = ss.getSheetByName(BUILDER_SHEET_NAME);
   if (!builder) { alert_(`Sheet "${BUILDER_SHEET_NAME}" not found.`); return; }
 
+  // Deliberately does NOT rebuild row 3's data validation here — that would
+  // wipe any custom dropdown item colours the SM team has set up in the
+  // sheet UI (Apps Script's data validation API can't read or restore those
+  // colours). Instead, validity below is checked against each cell's
+  // *existing* live dropdown list, left completely untouched.
+
   const lastCol = builder.getLastColumn();
   const row1    = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
-  const lastRow = builder.getLastRow();
 
-  if (lastRow < CATALOGUE_DATA_START) {
+  // Read entries from this builder's own catalogue.
+  const catData = readCatalogueRows_(builder, lastCol);
+  if (catData.length === 0) {
     alert_('No catalogue entries found. The catalogue section starts at row ' + CATALOGUE_DATA_START + '.'); return;
   }
-
-  // Read catalogue entries — col A = name, cols B+ = selection strings
-  const catData = builder.getRange(
-    CATALOGUE_DATA_START, 1, lastRow - CATALOGUE_DATA_START + 1, lastCol
-  ).getValues();
 
   // Build list of named entries with a summary of their column counts
   const entries = [];
@@ -661,18 +809,13 @@ function loadFromCatalogue() {
     const name = String(catRow[0] || '').trim();
     if (!name) return;
 
+    const selMap = catalogueRowToMap_(catRow, row1, lastCol);
     let mandatory = 0, optional = 0, hidden = 0;
-    for (let col = 2; col <= lastCol; col++) {
-      const val     = catRow[col - 1];
-      let   selStr  = '';
-      if (val === true)                                           selStr = SEL_MANDATORY_VISIBLE;
-      else if (typeof val === 'string' && val.trim().length > 0) selStr = val.trim().toLowerCase();
-      if (!selStr) continue;
-
-      if (ALL_HIDDEN_TRIGGERS.includes(selStr))                   hidden++;
-      else if (selStr === SEL_OPTIONAL_VISIBLE)                   optional++;
-      else                                                        mandatory++;
-    }
+    selMap.forEach(selStr => {
+      if (ALL_HIDDEN_TRIGGERS.includes(selStr))      hidden++;
+      else if (selStr === SEL_OPTIONAL_VISIBLE)      optional++;
+      else                                            mandatory++;
+    });
 
     entries.push({ name, mandatory, optional, hidden, dataRowIdx: idx });
   });
@@ -691,7 +834,7 @@ function loadFromCatalogue() {
   const ui       = SpreadsheetApp.getUi();
   const response = ui.prompt(
     'Load from catalogue',
-    `Enter the number of the manifest to pre-populate row 2:\n\n${listLines}\n`,
+    `Enter the number of the manifest to pre-populate row 3:\n\n${listLines}\n`,
     ui.ButtonSet.OK_CANCEL
   );
 
@@ -702,59 +845,101 @@ function loadFromCatalogue() {
     alert_(`Invalid choice. Please enter a number between 1 and ${entries.length}.`); return;
   }
 
-  const selected  = entries[choice - 1];
-  const catRow    = catData[selected.dataRowIdx];
+  const selected     = entries[choice - 1];
+  const catRow       = catData[selected.dataRowIdx];
+  const catSelByName = catalogueRowToMap_(catRow, row1, lastCol);  // colName → lowercase selection string
 
-  // ── Write selections back into row 2 ─────────────────────────────────────
-  // For each column in the catalogue entry:
-  //   • Full selection string → write directly into row 2
-  //   • Old TRUE checkbox     → map to "Mandatory, visible"
-  //   • Empty / FALSE         → write "select option" (unset)
-  // Columns that don't appear in the catalogue (new columns added since) are left as-is.
+  // ── Write selections back into row 3, matched by column NAME ────────────
+  //   • Catalogue has a value for this column → write it, if it's still a
+  //     valid choice for that column's current dropdown
+  //   • Column absent from the catalogue entry → write "select option" (unset)
+  // Some columns (e.g. the "must stay visible" fields) have a dropdown with
+  // only a single allowed value and no "unset" option — if the catalogue
+  // value isn't in that cell's actual current dropdown list, the cell is
+  // left unchanged rather than being written with a value that would violate
+  // its data validation rule. Validity is checked against each cell's live
+  // dropdown (via getDataValidation()) rather than a hard-coded list, so this
+  // works correctly for any column's dropdown without needing to touch/rebuild
+  // it — which would also strip any custom item colours set up in the sheet.
   let written = 0;
+  const skipped = [];
   for (let col = 2; col <= lastCol; col++) {
-    const val    = catRow[col - 1];
-    let   newSel = '';
+    const colName = String(row1[col - 1] || '').trim();
+    if (!colName) continue;
 
-    if (val === true) {
-      newSel = 'Mandatory, visible';
-    } else if (typeof val === 'string' && val.trim().length > 0) {
-      // Restore original casing from BUILDER_DROPDOWN_OPTIONS if possible
-      const stored   = val.trim();
-      const matched  = BUILDER_DROPDOWN_OPTIONS.find(
-        opt => opt.toLowerCase() === stored.toLowerCase()
-      );
-      newSel = matched || stored;  // use canonical casing if found
-    } else {
+    const storedNorm = catSelByName.get(colName);  // lowercase, or undefined if excluded/not in catalogue
+    let newSel;
+    if (storedNorm === undefined) {
       newSel = 'select option';
+    } else {
+      // Restore original casing from BUILDER_DROPDOWN_OPTIONS if possible
+      const matched = BUILDER_DROPDOWN_OPTIONS.find(opt => opt.toLowerCase() === storedNorm);
+      newSel = matched || storedNorm;
     }
 
-    builder.getRange(ROW_SELECTION, col).setValue(newSel);
+    const cell = builder.getRange(ROW_SELECTION, col);
+    if (!isValueAllowedByCellDropdown_(cell, newSel)) {
+      skipped.push(colName);
+      continue;
+    }
+
+    cell.setValue(newSel);
     written++;
   }
 
   alert_(
-    `✅ Row 2 pre-populated from: ${selected.name}
+    `✅ Row 3 pre-populated from: ${selected.name}
 
 ` +
     `${written} columns updated (${selected.mandatory} mandatory, ` +
     `${selected.optional} optional, ${selected.hidden} hidden, rest excluded).
 
 ` +
+    (skipped.length > 0
+      ? `⚠️ ${skipped.length} column(s) left unchanged because the catalogue value isn't a valid choice in their current dropdown (e.g. a "must stay visible" column with no matching entry in the catalogue): ${skipped.join(', ')}
+
+`
+      : '') +
     `You can now adjust any selections before generating the manifest.`
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Helper: isValueAllowedByCellDropdown_(cell, value)
+// Checks value against cell's own live "value in list" data validation rule
+// (case-insensitive), without ever reading or rebuilding the rule itself —
+// used instead of a hard-coded option list so we never have to call
+// setDataValidation() (which would silently strip any custom dropdown item
+// colours configured in the sheet UI; Apps Script cannot read or restore
+// those colours). Cells with no rule, or a rule that isn't a value-in-list,
+// are treated as unrestricted.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function isValueAllowedByCellDropdown_(cell, value) {
+  const rule = cell.getDataValidation();
+  if (!rule) return true;
+  if (rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) return true;
+  const allowedValues = rule.getCriteriaValues()[0];
+  return allowedValues.some(v => String(v).toLowerCase() === String(value).toLowerCase());
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN: syncSopCommentsToBuilder()
 // Fetches the latest SOP descriptions from the master SOP Google Doc and writes
-// them as cell comments on the row 1 column headers of the builder sheet
-// (all_manifest_builder_v1.0). This keeps the builder sheet up to date whenever
-// the SOP source document is edited, without needing to run a full generation.
-// Called from the menu: 📋 ToL Manifest Tools > 🔄 Sync SOP comments to builder headers
+// them as cell comments on the row 2 column headers of the builder sheet
+// (all_manifest_builder_v1.0). This keeps the master's builder sheet up to
+// date whenever the SOP source document is edited, without needing to run a
+// full generation. Every PI template inherits whatever comments existed on
+// the master at copy-time, so this only needs to run on the master itself.
+// Called from the menu: SM Only > 🔄 Sync SOP comments to builder headers
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function syncSopCommentsToBuilder() {
+  if (!isMasterSpreadsheet_()) {
+    alert_('⚠️ Sync SOP comments is run from the master manifest, not a PI builder template.');
+    return;
+  }
+
   const ss      = SpreadsheetApp.getActiveSpreadsheet();
   const builder = ss.getSheetByName(BUILDER_SHEET_NAME);
   if (!builder) { alert_(`Sheet "${BUILDER_SHEET_NAME}" not found.`); return; }
@@ -767,7 +952,7 @@ function syncSopCommentsToBuilder() {
     alert_(`⚠️ SOP Sync Failed\n\n${e.message}`); return;
   }
 
-  // Apply comments to every named header cell in row 1 (skip col 1 = label column)
+  // Apply comments to every named header cell in row 2 (skip col 1 = label column)
   const lastCol = builder.getLastColumn();
   const row1    = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
   let updated = 0;
@@ -791,35 +976,6 @@ function syncSopCommentsToBuilder() {
       ? `${missing} column(s) had no matching SOP entry — their comments were left unchanged.`
       : `All columns matched.`)
   );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Helper: applyBuilderDropdowns_(builder)
-// Applies the row 2 dropdown validation list to every column in the builder
-// sheet. Columns whose row 4 system requirement is "Mandatory" get the
-// restricted 3-option list; all other columns get the full 5-option list
-// (including the unset placeholder). Runs automatically at the start of
-// generateManifest() so the dropdowns are always up to date.
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function applyBuilderDropdowns_(builder) {
-  const lastCol  = builder.getLastColumn();
-  const row4vals = builder.getRange(ROW_SYSTEM_REQ, 1, 1, lastCol).getValues()[0];
-
-  const mandatoryRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(BUILDER_DROPDOWN_OPTIONS_MANDATORY, true)
-    .setAllowInvalid(false).build();
-
-  const optionalRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(BUILDER_DROPDOWN_OPTIONS_OPTIONAL, true)
-    .setAllowInvalid(false).build();
-
-  for (let col = 2; col <= lastCol; col++) {
-    const sysReq = String(row4vals[col - 1] || '').trim().toLowerCase();
-    const isSysMandatory = sysReq.includes('mandatory');
-    builder.getRange(ROW_SELECTION, col)
-      .setDataValidation(isSysMandatory ? mandatoryRule : optionalRule);
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1281,16 +1437,19 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Helper: appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
+// Helper: appendCatalogueRow_(builder, projectName, lastCol, row1, row2)
 // See doc comment below for full details.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Appends a new row to the ToL Manifest Catalogue section of the builder sheet.
+ * Appends a new row to the ToL Manifest Catalogue section of this builder
+ * sheet. Every builder (master or PI template copy) has its own independent
+ * catalogue — this never reaches into another spreadsheet.
  *
  * Format of the new row:
- *   Col A  = project name, bold, yellow background, with a cell note
- *            flagging it as pending SM team review.
+ *   Col A  = project name (with an "-N" iteration suffix if this project
+ *            name & version was already generated before), bold, yellow
+ *            background to flag it as pending SM team review.
  *   Col B+ = full selection string for included columns (e.g. "Mandatory,
  *            visible"), empty string for excluded/unset.
  *            Each cell is colour-coded to match the manifest headers:
@@ -1301,13 +1460,13 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
  *
  * This richer format (vs old TRUE/FALSE checkboxes) allows loadFromCatalogue()
  * to restore the exact mandatory/optional/hidden nuance when pre-populating
- * row 2, and allows checkCatalogue() to distinguish exact vs near matches.
+ * row 3, and allows checkCatalogue() to distinguish exact vs near matches.
  * Old TRUE/FALSE rows in the catalogue are still supported by both functions.
  *
  * Insertion: finds the last named row in the catalogue section and inserts
  * one row below it (blank separator rows between entries are preserved).
  */
-function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2) {
+function appendCatalogueRow_(builder, projectName, lastCol, row1, row2) {
   // Find the last row that has any content in col A at or after CATALOGUE_DATA_START
   const lastRow   = builder.getLastRow();
   let   insertRow = CATALOGUE_DATA_START;
@@ -1351,10 +1510,6 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   // Col A: yellow to flag as new/pending SM review
   const nameCell = builder.getRange(insertRow, 1);
   nameCell.setBackground('#FFF9C4').setFontWeight('bold');
-  nameCell.setNote(
-    'Generated ' + new Date().toLocaleDateString() +
-    ' — pending SM team review. Copy this row to the master manifest catalogue.'
-  );
 
   // Cols B onward: colour-coded to match the manifest header colours
   //   Forest green = mandatory → white text
@@ -1386,20 +1541,22 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Moves a Drive file into OUTPUT_FOLDER_ID and removes it from all other parents
- * (Drive creates files in the root by default — this relocates them).
- * Falls back gracefully if the folder ID is wrong or permissions are missing.
+ * Moves a Drive file into the given folder (or OUTPUT_FOLDER_ID itself if no
+ * folder is passed) and removes it from all other parents (Drive creates
+ * files in the root by default — this relocates them).
+ * Falls back gracefully if the folder is wrong/inaccessible or permissions
+ * are missing.
  */
-function moveToOutputFolder_(fileId) {
+function moveToOutputFolder_(fileId, folder) {
   try {
-    const folder = DriveApp.getFolderById(OUTPUT_FOLDER_ID);
-    const file   = DriveApp.getFileById(fileId);
-    folder.addFile(file);
+    const targetFolder = folder || DriveApp.getFolderById(OUTPUT_FOLDER_ID);
+    const file = DriveApp.getFileById(fileId);
+    targetFolder.addFile(file);
     // Remove from root / any other parents
     const parents = file.getParents();
     while (parents.hasNext()) {
       const parent = parents.next();
-      if (parent.getId() !== OUTPUT_FOLDER_ID) {
+      if (parent.getId() !== targetFolder.getId()) {
         parent.removeFile(file);
       }
     }
@@ -1407,6 +1564,87 @@ function moveToOutputFolder_(fileId) {
     Logger.log(`⚠️  Could not move file ${fileId} to output folder: ${e.message}`);
     // Non-fatal — file still exists in Drive root
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper: getOrCreateProjectFolder_(folderName)
+// Finds (or creates) a subfolder named folderName directly inside
+// OUTPUT_FOLDER_ID. All files from a single generateManifest() run (the
+// manifest sheet + both SOP docs) are moved into this subfolder, so every
+// project/version (and each of its iterations) has its own tidy folder
+// inside the shared output folder. Throws if OUTPUT_FOLDER_ID itself is
+// inaccessible — the caller catches this and falls back to the folder root.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function getOrCreateProjectFolder_(folderName) {
+  const parent   = DriveApp.getFolderById(OUTPUT_FOLDER_ID);
+  const existing = parent.getFoldersByName(folderName);
+  return existing.hasNext() ? existing.next() : parent.createFolder(folderName);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN: createBuilderTemplate()
+// Makes a full Drive copy of the master manifest (bound script included) and
+// saves it into the shared output folder, ready to hand to one PI. The copy
+// is a completely independent, self-contained builder — identical to the
+// master at copy-time, with its own Manifest Catalogue that grows on its own
+// as manifests are generated from it. Resets the copy's project-name cell to
+// the placeholder so the PI is prompted for their own name/version on first
+// generation; row 3 selections are left exactly as copied.
+// Sharing the new file with the PI is a manual step for the SM team.
+// Called from the menu: SM Only > 🆕 Create New Builder Template for a PI
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function createBuilderTemplate() {
+  if (!isMasterSpreadsheet_()) {
+    alert_('⚠️ Create New Builder Template is run from the master manifest, not a PI builder template.');
+    return;
+  }
+
+  const ui  = SpreadsheetApp.getUi();
+  const res = ui.prompt(
+    'Create New Builder Template',
+    'Enter a short name for this PI/project (used in the template\'s file name only), e.g. "DToL_Bats":',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+
+  const label = res.getResponseText().trim();
+  if (!label) { alert_('Cancelled — a name is required.'); return; }
+
+  const today     = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const safeLabel = label.replace(/[\\/:*?"<>|]/g, '_');
+  const newName   = `ToL_Builder_Template_${safeLabel}_${today}`;
+
+  let copiedFile;
+  try {
+    const masterFile   = DriveApp.getFileById(SpreadsheetApp.getActiveSpreadsheet().getId());
+    const outputFolder = DriveApp.getFolderById(OUTPUT_FOLDER_ID);
+    copiedFile = masterFile.makeCopy(newName, outputFolder);
+  } catch (e) {
+    alert_(`⚠️ Could not create the template.\n\n${e.message}`);
+    return;
+  }
+
+  // Reset the copy's project name cell so the PI is prompted for their own
+  // name on first generation, rather than inheriting whatever was last typed
+  // into the master's own A2. Row 3 selections are left as copied — the
+  // master's own row 3 is the standard starting point every template inherits.
+  try {
+    const newSS      = SpreadsheetApp.openById(copiedFile.getId());
+    const newBuilder = newSS.getSheetByName(BUILDER_SHEET_NAME);
+    if (newBuilder) newBuilder.getRange(PROJECT_NAME_CELL).setValue('Project Name and Version');
+  } catch (e) {
+    Logger.log(`⚠️ Could not reset project name cell in new template: ${e.message}`);
+  }
+
+  alert_(
+    `✅ Builder template created for "${label}".\n\n` +
+    `📄 File: ${copiedFile.getName()}\n${copiedFile.getUrl()}\n\n` +
+    `Share this file with the PI yourself (Editor access) — this is not done automatically.\n\n` +
+    `This is a fully independent copy of the master — the PI's selections, ` +
+    `catalogue, and generated manifests all stay within their own template.`
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1421,28 +1659,33 @@ function alert_(msg) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Menu: onOpen()
-// Runs automatically when the spreadsheet is opened. Adds the
-// '📋 ToL Manifest Tools' menu with four items:
-//   • 🔍 Check catalogue for identical manifest  (top-level, easy access)
-//   • 📂 Load from catalogue into row 2          (top-level, easy access)
-//   • 🔄 Sync SOP comments to builder headers    (top-level — run after SOP edits)
-//   • Generate manifest + SOP > ▶ Run generator  (in submenu — prevents
-//     accidental triggering of the full generation pipeline)
+// Runs automatically when the spreadsheet is opened. Which menu appears
+// depends on isMasterSpreadsheet_() (see that helper and the "TWO KINDS OF
+// SPREADSHEET" note at the top of this file):
+//
+//   On the MASTER manifest — SM Only:
+//     • 🆕 Create New Builder Template for a PI
+//     • 🔄 Sync SOP comments to builder headers
+//
+//   On a PI builder template — 📋 ToL Manifest Tools:
+//     • 🔍 Check catalogue for identical manifest
+//     • 📂 Load from catalogue into row 3
+//     • ▶ Generate my manifest
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
 
-  // Top-level menu: catalogue and SOP sync are immediately accessible
-  // Generate manifest lives in a submenu so it is harder to trigger accidentally
-  ui.createMenu('📋 ToL Manifest Tools')
-    .addItem('🔍 Check catalogue for identical manifest', 'checkCatalogue')
-    .addItem('📂 Load from catalogue into row 2', 'loadFromCatalogue')
-    .addItem('🔄 Sync SOP comments to builder headers', 'syncSopCommentsToBuilder')
-    .addSeparator()
-    .addSubMenu(
-      ui.createMenu('Generate manifest + SOP')
-        .addItem('▶ Run generator', 'generateManifest')
-    )
-    .addToUi();
+  if (isMasterSpreadsheet_()) {
+    ui.createMenu('SM Only')
+      .addItem('🆕 Create New Builder Template for a PI', 'createBuilderTemplate')
+      .addItem('🔄 Sync SOP comments to builder headers', 'syncSopCommentsToBuilder')
+      .addToUi();
+  } else {
+    ui.createMenu('📋 ToL Manifest Tools')
+      .addItem('🔍 Check catalogue for identical manifest', 'checkCatalogue')
+      .addItem('📂 Load from catalogue into row 3', 'loadFromCatalogue')
+      .addItem('▶ Generate my manifest', 'generateManifest')
+      .addToUi();
+  }
 }
