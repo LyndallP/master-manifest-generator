@@ -707,9 +707,14 @@ function loadFromCatalogue() {
   const builder = ss.getSheetByName(BUILDER_SHEET_NAME);
   if (!builder) { alert_(`Sheet "${BUILDER_SHEET_NAME}" not found.`); return; }
 
-  const lastCol = builder.getLastColumn();
-  const row1    = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
-  const lastRow = builder.getLastRow();
+  // Refresh row 3 dropdowns first so validation matches the current row 5
+  // system requirements before we write catalogue values into row 3 below.
+  applyBuilderDropdowns_(builder);
+
+  const lastCol  = builder.getLastColumn();
+  const row1     = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
+  const row5vals = builder.getRange(ROW_SYSTEM_REQ,    1, 1, lastCol).getValues()[0];
+  const lastRow  = builder.getLastRow();
 
   if (lastRow < CATALOGUE_DATA_START) {
     alert_('No catalogue entries found. The catalogue section starts at row ' + CATALOGUE_DATA_START + '.'); return;
@@ -772,11 +777,19 @@ function loadFromCatalogue() {
 
   // ── Write selections back into row 3 ─────────────────────────────────────
   // For each column in the catalogue entry:
-  //   • Full selection string → write directly into row 3
+  //   • Full selection string → write directly into row 3, if it's still a
+  //     valid choice for that column's current dropdown
   //   • Old TRUE checkbox     → map to "Mandatory, visible"
-  //   • Empty / FALSE         → write "select option" (unset)
+  //   • Empty / FALSE         → write "select option" (unset) — only valid on
+  //     non-system-mandatory columns
+  // System-mandatory columns have no "unset" option in their dropdown (see
+  // BUILDER_DROPDOWN_OPTIONS_MANDATORY), so if the catalogue value isn't a
+  // valid choice for that column (e.g. it was excluded, or it's a value only
+  // valid on optional columns), the cell is left unchanged rather than being
+  // written with a value that violates its data validation rule.
   // Columns that don't appear in the catalogue (new columns added since) are left as-is.
   let written = 0;
+  const skipped = [];
   for (let col = 2; col <= lastCol; col++) {
     const val    = catRow[col - 1];
     let   newSel = '';
@@ -794,18 +807,33 @@ function loadFromCatalogue() {
       newSel = 'select option';
     }
 
+    const sysReq         = String(row5vals[col - 1] || '').trim().toLowerCase();
+    const isSysMandatory = sysReq.includes('mandatory');
+    const allowedList    = isSysMandatory ? BUILDER_DROPDOWN_OPTIONS_MANDATORY : BUILDER_DROPDOWN_OPTIONS_OPTIONAL;
+    const isValidChoice  = allowedList.some(opt => opt.toLowerCase() === newSel.toLowerCase());
+
+    if (!isValidChoice) {
+      skipped.push(String(row1[col - 1] || `column ${col}`).trim());
+      continue;
+    }
+
     builder.getRange(ROW_SELECTION, col).setValue(newSel);
     written++;
   }
 
   alert_(
-    `✅ Row 2 pre-populated from: ${selected.name}
+    `✅ Row 3 pre-populated from: ${selected.name}
 
 ` +
     `${written} columns updated (${selected.mandatory} mandatory, ` +
     `${selected.optional} optional, ${selected.hidden} hidden, rest excluded).
 
 ` +
+    (skipped.length > 0
+      ? `⚠️ ${skipped.length} column(s) left unchanged because the catalogue value isn't a valid choice for them now (e.g. a system-mandatory column with no matching entry in the catalogue): ${skipped.join(', ')}
+
+`
+      : '') +
     `You can now adjust any selections before generating the manifest.`
   );
 }
@@ -869,7 +897,7 @@ function syncSopCommentsToBuilder() {
 
 function applyBuilderDropdowns_(builder) {
   const lastCol  = builder.getLastColumn();
-  const row4vals = builder.getRange(ROW_SYSTEM_REQ, 1, 1, lastCol).getValues()[0];
+  const row5vals = builder.getRange(ROW_SYSTEM_REQ, 1, 1, lastCol).getValues()[0];
 
   const mandatoryRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(BUILDER_DROPDOWN_OPTIONS_MANDATORY, true)
@@ -880,7 +908,7 @@ function applyBuilderDropdowns_(builder) {
     .setAllowInvalid(false).build();
 
   for (let col = 2; col <= lastCol; col++) {
-    const sysReq = String(row4vals[col - 1] || '').trim().toLowerCase();
+    const sysReq = String(row5vals[col - 1] || '').trim().toLowerCase();
     const isSysMandatory = sysReq.includes('mandatory');
     builder.getRange(ROW_SELECTION, col)
       .setDataValidation(isSysMandatory ? mandatoryRule : optionalRule);
