@@ -12,18 +12,18 @@ The Manifest Generator reads a configuration Google Sheet (`all_manifest_builder
 2. **An internal SOP Google Doc** — full column-by-column instructions for all fields including hidden ones (marked `[HIDDEN]`)
 3. **A partner-facing SOP Google Doc** — instructions for visible fields only, with a note about hidden columns
 4. **A Partner SOP tab** inside the generated manifest Google Sheet
-5. **A new catalogue row** — appended to the master manifest's manifest catalogue, colour-coded and flagged for SM team review. If the project name & version has been generated before, an iteration suffix (`-1`, `-2`, …) is appended so repeat runs stay distinguishable
+5. **A new catalogue row** — appended to this builder's own manifest catalogue, colour-coded and flagged for SM team review. If the project name & version has been generated before, an iteration suffix (`-1`, `-2`, …) is appended so repeat runs stay distinguishable
 
 All outputs (the manifest sheet and both SOP docs) are saved into a per-project subfolder — named after the project name & version — inside the shared Google Drive output folder accessible to the sample management team. The subfolder is created automatically on first use and reused on subsequent runs for the same project/version.
 
 ### Two kinds of spreadsheet, one shared script
 
-This same script is bound to two different kinds of spreadsheet, and shows a different menu depending on which one it's running in:
+This same script is bound to two different kinds of spreadsheet, which are otherwise identical and fully self-contained — each with its own independent column structure, row 3 selections, and Manifest Catalogue. The only thing that differs is which menu appears:
 
-- **The master manifest** — the single spreadsheet the SM team maintains: the column structure/requirements, the live Manifest Catalogue, and a "default" row 3 selection state that every new PI template starts from. Shows the **SM Only** menu. Nobody generates directly from the master.
-- **A PI builder template** — a full copy of the master (made via **SM Only → Create New Builder Template for a PI**), handed to one PI to fill in their own selections. Shows the **📋 ToL Manifest Tools** menu. Because copying a Google Sheet also copies its bound script, every template runs this exact same file, but always renders the PI-facing menu instead of SM Only.
+- **The master manifest** — the single spreadsheet the SM team maintains and preserves untouched. Shows the **SM Only** menu. Nobody generates directly from the master.
+- **A PI builder template** — a full, standalone copy of the master (made via **SM Only → Create New Builder Template for a PI**), handed to one PI to fill in their own selections. Shows the **📋 ToL Manifest Tools** menu. Because copying a Google Sheet also copies its bound script, every template runs this exact same file, but always renders the PI-facing menu instead of SM Only.
 
-A PI template's own copy of the Manifest Catalogue is just a frozen snapshot from the moment it was created — checking, loading, and appending to the catalogue always talk to the live master instead, so every PI template shares one up-to-date catalogue. This means **every PI needs at least Editor access to the master manifest itself**, not just their own template — see [Master vs PI Builder Template](#master-vs-pi-builder-template) for the full picture.
+Checking, loading, and generating all work entirely within that one template — its own Manifest Catalogue grows as manifests are generated from it, and nothing ever reaches back into the master. The master/template split changes nothing except which menu is shown, so that the master itself can never be generated from — see [Master vs PI Builder Template](#master-vs-pi-builder-template) for the full picture.
 
 ---
 
@@ -56,9 +56,6 @@ The script fetches column descriptions live from a master SOP Google Doc at run-
 
 ### Shared Output Folder
 All generated files, and every new PI builder template, are saved to a shared Google Drive folder. The folder ID is set in the `OUTPUT_FOLDER_ID` constant. Every account running the script needs **Editor** access to this folder. If a user lacks access, generated manifest/SOP files will still be created (in their Drive root) but will not land in the shared folder — a warning is logged but generation completes; template creation fails outright with a clear error instead.
-
-### Master manifest access for PIs
-Every catalogue interaction (check, load, and the new-row append after generating) happens against the master manifest's builder sheet, regardless of which PI template it's run from. **Every PI therefore needs at least Editor access to the master manifest itself**, not just their own template — Viewer access is not enough, since generating a manifest writes a new catalogue row into the master.
 
 ---
 
@@ -186,16 +183,16 @@ Which menu appears depends on whether the open spreadsheet's ID matches `MASTER_
 
 | Menu item | Function | Description |
 |-----------|----------|-------------|
-| 🆕 Create New Builder Template for a PI | `createBuilderTemplate()` | Makes a full Drive copy of the master (bound script included) and saves it into the shared output folder, ready to hand to a PI |
+| 🆕 Create New Builder Template for a PI | `createBuilderTemplate()` | Makes a full, standalone Drive copy of the master (bound script included) and saves it into the shared output folder, ready to hand to a PI |
 | 🔄 Sync SOP comments to builder headers | `syncSopCommentsToBuilder()` | Fetches the latest SOP descriptions from the master SOP Doc and writes them as cell comments on the row 2 column headers of the master's builder sheet. Run this whenever the SOP source document is updated — no generation needed. Every future template copy inherits whatever comments exist at copy-time |
 
 ### On a PI builder template — 📋 ToL Manifest Tools
 
 | Menu item | Function | Description |
 |-----------|----------|-------------|
-| 🔍 Check catalogue for identical manifest | `checkCatalogue()` | Compares the current row 3 selections against every entry in the **master's live** catalogue. Reports exact matches (same columns + same mandatory/optional/hidden status) and near matches (same columns, different nuance) |
-| 📂 Load from catalogue into row 3 | `loadFromCatalogue()` | Shows a numbered list of entries from the **master's live** catalogue; the user picks one and this template's row 3 is pre-populated with that manifest's selections. The user can then adjust before generating |
-| ▶ Generate my manifest | `generateManifest()` | Runs the full generation pipeline (see [What Gets Generated](#what-gets-generated)); the new catalogue row is appended to the **master**, not this template's own copy |
+| 🔍 Check catalogue for identical manifest | `checkCatalogue()` | Compares the current row 3 selections against every entry in this template's own catalogue. Reports exact matches (same columns + same mandatory/optional/hidden status) and near matches (same columns, different nuance) |
+| 📂 Load from catalogue into row 3 | `loadFromCatalogue()` | Shows a numbered list of entries from this template's own catalogue; the user picks one and row 3 is pre-populated with that manifest's selections. The user can then adjust before generating |
+| ▶ Generate my manifest | `generateManifest()` | Runs the full generation pipeline (see [What Gets Generated](#what-gets-generated)); the new catalogue row is appended to this same template, never to the master |
 
 Running any of the above from the "wrong" spreadsheet (e.g. calling `generateManifest()` from the master, or `createBuilderTemplate()` from a template) shows a warning and does nothing — see the guard at the top of each function.
 
@@ -203,23 +200,19 @@ Running any of the above from the "wrong" spreadsheet (e.g. calling `generateMan
 
 ## Master vs PI Builder Template
 
-This script is bound to two different kinds of spreadsheet, distinguished at open-time by `isMasterSpreadsheet_()` — which just compares the active spreadsheet's ID against `MASTER_SPREADSHEET_ID`:
+This script is bound to two different kinds of spreadsheet, distinguished at open-time by `isMasterSpreadsheet_()` — which just compares the active spreadsheet's ID against `MASTER_SPREADSHEET_ID`. Beyond that one check, master and template are otherwise identical and fully independent: same column structure, same row 3 dropdowns, same kind of Manifest Catalogue — nothing ever reaches from one spreadsheet into another.
 
-- **The master manifest** owns the column structure/requirements (rows 1–8), the live Manifest Catalogue (rows 14+), and a "default" row 3 selection state that every new template starts from. The SM team is the only audience — no PI edits the master directly.
-- **A PI builder template** is a full Drive copy of the master, made via **SM Only → Create New Builder Template for a PI**. Because copying a spreadsheet also copies its bound script, the template runs the exact same `ManifestGenerator.gs`, but since its spreadsheet ID never matches `MASTER_SPREADSHEET_ID`, it always renders the PI-facing menu instead of SM Only.
+- **The master manifest** is the canonical spreadsheet the SM team maintains and preserves untouched. The SM team is the only audience — no PI edits the master directly, and the generator can never be run from it.
+- **A PI builder template** is a full, standalone Drive copy of the master, made via **SM Only → Create New Builder Template for a PI**. Because copying a spreadsheet also copies its bound script, the template runs the exact same `ManifestGenerator.gs`, but since its spreadsheet ID never matches `MASTER_SPREADSHEET_ID`, it always renders the PI-facing menu instead of SM Only. From there it behaves exactly like a single all-in-one builder always has — checking, loading, and generating all read and write only within that one copy.
 
 ### Creating a New Builder Template for a PI
 1. From the master manifest, run **SM Only → 🆕 Create New Builder Template for a PI**
 2. Enter a short name for the PI/project when prompted (used only in the template's file name, e.g. `ToL_Builder_Template_DToL_Bats_2026-07-02`)
 3. The new file is saved directly in the shared output folder (`OUTPUT_FOLDER_ID`) — the same folder generated manifests and SOPs land in
-4. The template's project name cell (A2) is reset to the placeholder text so the PI is prompted for their own project name on first generation; row 3 selections are left exactly as copied from the master, since the master's own row 3 is meant to be the standard starting point every template inherits
+4. The template's project name cell (A2) is reset to the placeholder text so the PI is prompted for their own project name on first generation; row 3 selections and the existing catalogue rows are left exactly as copied from the master
 5. **Share the new file with the PI yourself** — this is a manual step, not automatic
-6. Make sure the PI also has at least **Editor** access to the master manifest itself (see [Master manifest access for PIs](#master-manifest-access-for-pis)), since their template's catalogue actions all read/write the master
 
-### Why the catalogue always lives on the master
-A PI template's own copy of the Manifest Catalogue rows is a frozen snapshot from the moment it was created. If `checkCatalogue()`/`loadFromCatalogue()`/the catalogue-row-append used that local snapshot, every template would drift out of sync the moment any other PI generated a manifest. Instead, all three always call `getMasterBuilderSheet_()` to reach the one live catalogue on the master, so duplicate-checking and iteration numbering work correctly across every PI's template, not just within one.
-
-Column matching between a template and the master is done **by column name**, not position — see `appendCatalogueRow_()` and `catalogueRowToMap_()` — so this still works correctly even if the master's columns have changed since a particular template was created (any local column the master no longer has is simply dropped from that catalogue row).
+Because the template is a fully independent copy, the PI only ever needs access to their own template file — not to the master manifest.
 
 ---
 
@@ -229,8 +222,8 @@ Running **▶ Generate my manifest** from a PI builder template triggers the gen
 
 1. **Row 3 dropdowns refreshed** — validation rules applied to all row 3 cells automatically
 2. **Project name validated** — reads cell A2; prompts if blank or still says `"Project Name and Version"`
-3. **Duplicate check** — automatically compares the current row 3 selections against the master's live catalogue. If an identical manifest already exists, a Yes/No dialog warns the PI before proceeding — even if they skipped the manual 🔍 Check catalogue step
-4. **Iteration suffix computed** — if this project name & version already appears in the master's catalogue, an `-N` suffix (`-1`, `-2`, …) is appended so the new run's files, folder, and catalogue row stay distinguishable from earlier ones
+3. **Duplicate check** — automatically compares the current row 3 selections against this template's own catalogue. If an identical manifest already exists, a Yes/No dialog warns the PI before proceeding — even if they skipped the manual 🔍 Check catalogue step
+4. **Iteration suffix computed** — if this project name & version already appears in this template's catalogue, an `-N` suffix (`-1`, `-2`, …) is appended so the new run's files, folder, and catalogue row stay distinguishable from earlier ones
 5. **Per-project subfolder resolved** — a subfolder named after the (possibly iterated) project name & version is found or created inside the shared output folder; falls back to the folder root if the subfolder can't be created
 6. **Live SOP fetched** — opens the master SOP Google Doc and parses all bullet-point field descriptions. Generation is cancelled with an error if this fails (see [Error Messages](#error-messages))
 7. **Remaining builder rows read** — rows 4–5 and 7 read
@@ -244,8 +237,8 @@ Running **▶ Generate my manifest** from a PI builder template triggers the gen
 15. **Hidden columns hidden** — all `hidden_nc`/`hidden_bespoke` columns hidden in the sheet
 16. **Partner SOP tab added** — green tab inside the manifest sheet
 17. **Two SOP Google Docs created** — internal and partner-facing, both moved into the same per-project subfolder
-18. **Catalogue row appended** — new row (with the iteration suffix, if any) added to the **master's** catalogue section, re-projected onto the master's own column layout by name
-19. **Summary popup shown** — links to all three output files, the output subfolder, and the master catalogue row number, plus a note to contact the ToL Sample Management team for review
+18. **Catalogue row appended** — new row (with the iteration suffix, if any) added to this template's own catalogue section
+19. **Summary popup shown** — links to all three output files, the output subfolder, and the catalogue row number, plus a note to contact the ToL Sample Management team for review
 
 ---
 
@@ -299,29 +292,27 @@ Both documents follow the format of the master SOP:
 
 ## Manifest Catalogue
 
-The catalogue section (rows 14+ of **the master's** builder sheet — see [Master vs PI Builder Template](#master-vs-pi-builder-template)) records every manifest that has been generated, from any PI template. Each row contains:
+The catalogue section (rows 14+ of a builder sheet) records every manifest that has been generated **from that same spreadsheet**. Master and template each have their own independent catalogue — a PI template's catalogue starts as a copy of the master's at creation time, then grows on its own as that PI generates manifests; nothing is ever shared back to the master or to any other template. Each row contains:
 
 - **Col A** — manifest name and version, with an `-N` iteration suffix if this project name & version has been generated more than once (bold, yellow background when newly added)
 - **Cols B+** — full selection string for included columns (e.g. `Mandatory, visible`), empty for excluded columns; cells colour-coded to match the manifest headers (green/light blue/white for included, light grey for excluded)
 - **Row formatting** — font size 8, text wrap enabled, solid border around the full row
 
-A PI builder template also has its own copy of these rows (inherited when it was created), but that copy is never read from or written to — it's a frozen snapshot, purely cosmetic. Every catalogue interaction from a template reaches back into the live master instead.
-
 > **Backwards compatibility:** Older catalogue rows using `TRUE`/`FALSE` checkboxes are still understood by both the catalogue checker and the load-from-catalogue function.
 
 ### Checking the catalogue
-**🔍 Check catalogue** (run from a PI template) compares the template's current row 3 selections against every named entry in the master's live catalogue:
+**🔍 Check catalogue** (run from a PI template) compares the template's current row 3 selections against every named entry in that same template's catalogue:
 - ✅ **Exact match** — identical columns AND identical mandatory/optional/hidden status throughout
 - 🔶 **Near match** — same set of columns included, but with different mandatory/optional/hidden nuance
 
 ### Loading from the catalogue
-**📂 Load from catalogue** (run from a PI template) shows a numbered prompt built from the master's live catalogue:
+**📂 Load from catalogue** (run from a PI template) shows a numbered prompt built from that template's own catalogue:
 ```
 1. DToL V2.6  (31 mandatory, 8 optional, 3 hidden)
 2. DToL V2.6 WOSPI V1.0  (33 mandatory, 8 optional, 3 hidden)
 3. BIOSCAN sent  (28 mandatory, 5 optional, 2 hidden)
 ```
-The user types a number and the template's row 3 is pre-populated with the exact selections from that entry, matched by column **name** against the master's columns. Columns not in the catalogue entry are set to `select option` (unset); columns whose catalogue value isn't a valid choice in that column's current dropdown (e.g. a "must stay visible" field) are left unchanged and reported in the summary. The user can then adjust selections before generating.
+The user types a number and row 3 is pre-populated with the exact selections from that entry. Columns not in the catalogue entry are set to `select option` (unset); columns whose catalogue value isn't a valid choice in that column's current dropdown (e.g. a "must stay visible" field) are left unchanged and reported in the summary. The user can then adjust selections before generating.
 
 > **Future enhancement (Option B):** A searchable HTML sidebar (using Google Apps Script's `HtmlService`) could replace the text prompt for better usability as the catalogue grows. See the comment block above `loadFromCatalogue()` in the script for implementation notes.
 
@@ -339,10 +330,9 @@ The user types a number and the template's row 3 is pre-populated with the exact
 | `The SOP file appears to be a .docx file` | `SOP_DOC_ID` points to a `.docx` file in Drive rather than a native Google Doc | One-time fix: open the file in Drive → **File → Save as Google Docs** → copy the new Doc ID from the URL → update `SOP_DOC_ID` in the script. `DocumentApp` cannot open `.docx` files even if you have edit access |
 | `SOP Doc opened but only N column description(s) parsed` | The SOP Doc structure has changed or the wrong Doc ID is set | Check the Doc ID in `SOP_DOC_ID` and verify the Doc contains bullet-point field descriptions in the expected format (`FIELDNAME: description`) |
 | `No columns are selected in row 3. Please choose an option for at least one column` | All columns are unset (`select option` or blank) | Select an option for at least one column in row 3. Individually unset columns no longer block generation — they are silently excluded |
-| `No catalogue entries found in the master manifest` | The master's catalogue section is empty or starts below `CATALOGUE_DATA_START` | Check the master's builder sheet and update `CATALOGUE_DATA_START` if the section has moved |
+| `No catalogue entries found` | This builder's own catalogue section is empty or starts below `CATALOGUE_DATA_START` | Check the builder sheet and update `CATALOGUE_DATA_START` if the section has moved |
 | `Generation must be run from a PI builder template, not the master manifest` | `generateManifest()` (or `checkCatalogue()`/`loadFromCatalogue()`) was run from the master itself | Use SM Only → Create New Builder Template for a PI, then run it from that template instead |
 | `Create New Builder Template is run from the master manifest, not a PI builder template` | `createBuilderTemplate()` was run from a PI template | Run it from the master manifest instead |
-| Cross-spreadsheet permission error when checking/loading/generating from a template | The PI's Google account lacks access to the master manifest | Grant the PI at least Editor access to the master spreadsheet — see [Master manifest access for PIs](#master-manifest-access-for-pis) |
 
 ### SOP sync failure in detail
 
@@ -385,12 +375,12 @@ Files are saved to the shared folder (inside a per-project subfolder) under the 
 
 ### Recommended workflow (current)
 1. **SM team** runs **SM Only → 🆕 Create New Builder Template for a PI** from the master manifest, entering a short name for the PI/project
-2. **SM team** shares the newly created template file with the PI (Editor access) — a manual step — and confirms the PI also has at least Editor access to the master manifest itself
+2. **SM team** shares the newly created template file with the PI (Editor access) — a manual step
 3. **PI** opens their template and fills in row 3 — selecting an option for each column using the dropdowns
-4. **PI** runs **🔍 Check catalogue** to confirm this is not a duplicate of an existing manifest (checked against the master's live catalogue)
+4. **PI** runs **🔍 Check catalogue** to confirm this is not a duplicate of an existing manifest within their own template
 5. **PI** runs **▶ Generate my manifest**
 6. All three output files land automatically in a per-project subfolder (named after the project name & version) inside the **shared SM team folder** — the summary popup shows the folder name and link
-7. A new **catalogue row** (highlighted yellow in col A, with an `-N` suffix if this is a repeat run) is appended to the **master's** builder sheet catalogue for SM review
+7. A new **catalogue row** (highlighted yellow in col A, with an `-N` suffix if this is a repeat run) is appended to that same template's own catalogue for SM review
 8. The summary popup asks the PI to contact the ToL Sample Management team (`treeoflifesamples@sanger.ac.uk`) if they'd like the row checked, or to update their selections and regenerate if it isn't what they need
 
 ### Future workflow (planned)
@@ -444,7 +434,7 @@ This script is maintained by the Tree of Life Sample Management team at the Well
 
 | Version | Date | Notes |
 |---------|------|-------|
-| 0.12 | 2026-07 | Split into a master/PI-template architecture: the master manifest now shows an "SM Only" menu (Create New Builder Template for a PI, Sync SOP comments); a new PI builder template — a full Drive copy of the master, made via that menu — shows "📋 ToL Manifest Tools" (Check catalogue, Load from catalogue, Generate my manifest) instead. Every catalogue check/load/append now always targets the master's live catalogue (`getMasterBuilderSheet_()`, matched by column name) regardless of which template it's run from, so every PI shares one up-to-date catalogue. New `MASTER_SPREADSHEET_ID` constant (required one-time setup) identifies the master. `generateManifest()`/`checkCatalogue()`/`loadFromCatalogue()` now refuse to run from the master itself, and `createBuilderTemplate()`/`syncSopCommentsToBuilder()` refuse to run from a template |
+| 0.12 | 2026-07 | Split into a master/PI-template architecture: the master manifest now shows an "SM Only" menu (Create New Builder Template for a PI, Sync SOP comments) instead of ToL Manifest Tools, so the generator can never be run from it. "Create New Builder Template for a PI" makes a full, standalone Drive copy of the master (bound script included) into the shared output folder; that copy shows "📋 ToL Manifest Tools" (Check catalogue, Load from catalogue, Generate my manifest) and works entirely on its own — its own column selections, its own Manifest Catalogue, nothing shared with the master or any other template. New `MASTER_SPREADSHEET_ID` constant (required one-time setup) is how `isMasterSpreadsheet_()` tells the master apart from a template copy. `generateManifest()`/`checkCatalogue()`/`loadFromCatalogue()` now refuse to run from the master itself, and `createBuilderTemplate()`/`syncSopCommentsToBuilder()` refuse to run from a template |
 | 0.11 | 2026-07 | Builder sheet rows shifted by one (new unused label row 1) plus an extra Notes row 8 — all row constants updated (selections now row 3, catalogue now starts row 14); output files now saved into a per-project subfolder (named by project & version) inside the shared folder; regenerating the same project name & version now appends an `-N` iteration suffix to the catalogue row and output filenames; removed the "pending SM team review" cell note; summary popup now points PIs to `treeoflifesamples@sanger.ac.uk` instead of asking them to copy the row to a master catalogue; new shared output folder ID; menu reorganised — Generate is back at the top level as "Generate my manifest", Sync SOP comments moved into a new "SM Only" submenu |
 | 0.10 | 2026-06 | New colour palette: forest green mandatory headers, very light blue/dark blue text optional headers; mandatory/optional data cells now plain white (no tint); missing-mandatory highlight changed from amber to light green |
 | 0.9 | 2026-06 | New row 2 vocabulary (`Mandatory, visible` / `Optional, visible` / hide-and-prefill options); row 6 bespoke autopopulate values; unset selections no longer block generation (silently excluded); hidden columns auto-prefilled with `NOT_COLLECTED` or bespoke term; `MANIFEST_DATA_ROWS` increased to 1920 |
