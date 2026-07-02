@@ -12,9 +12,9 @@ The Manifest Generator reads a configuration Google Sheet (`all_manifest_builder
 2. **An internal SOP Google Doc** — full column-by-column instructions for all fields including hidden ones (marked `[HIDDEN]`)
 3. **A partner-facing SOP Google Doc** — instructions for visible fields only, with a note about hidden columns
 4. **A Partner SOP tab** inside the generated manifest Google Sheet
-5. **A new catalogue row** — appended to the builder sheet's manifest catalogue, colour-coded and flagged for SM team review
+5. **A new catalogue row** — appended to the builder sheet's manifest catalogue, colour-coded and flagged for SM team review. If the project name & version has been generated before, an iteration suffix (`-1`, `-2`, …) is appended so repeat runs stay distinguishable
 
-All outputs are saved to a shared Google Drive folder accessible to the sample management team.
+All outputs (the manifest sheet and both SOP docs) are saved into a per-project subfolder — named after the project name & version — inside the shared Google Drive output folder accessible to the sample management team. The subfolder is created automatically on first use and reused on subsequent runs for the same project/version.
 
 ---
 
@@ -74,12 +74,13 @@ const BUILDER_SHEET_NAME = 'all_manifest_builder_v1.0';
 // Extract from the Doc URL: docs.google.com/document/d/[DOC_ID]/edit
 const SOP_DOC_ID = '10WMIZ9GuB0hj5pBzFkz1U2V3_KwIFH-3cAud6h3-Gow';
 
-// Google Drive folder ID for all output files
+// Google Drive folder ID for all output files. A per-project subfolder is
+// created/reused inside this folder on every run.
 // Extract from the folder URL: drive.google.com/drive/folders/[FOLDER_ID]
-const OUTPUT_FOLDER_ID = '1tnQ7ciifegXd_4HUPcZ4me4kdBtRxnii';
+const OUTPUT_FOLDER_ID = '1hGB3WXCTcc78oW230iizswW5jQd2-5uE';
 
 // First data row of the catalogue section in the builder sheet
-const CATALOGUE_DATA_START = 12;
+const CATALOGUE_DATA_START = 14;
 
 // Number of blank data rows to generate in the manifest
 const MANIFEST_DATA_ROWS = 1920;
@@ -115,25 +116,26 @@ The `all_manifest_builder_v1.0` sheet is laid out as follows:
 
 | Row | Label (col A) | Purpose |
 |-----|---------------|---------|
-| 1 | Project Name and Version | **Col A:** Project name used in all filenames and SOP text. Must be filled in before generating (e.g. `DToL_Bats_v1.0`). **Cols B+:** Column field names |
-| 2 | REQUIREMENT FOR NEW PROJECT MANIFEST | Project-level selection for each column — choose from the dropdown in each cell (see [Row 2 Dropdown Options](#row-2-dropdown-options)). The dropdown offered depends on row 4: system-mandatory columns get a restricted 3-option list, all others get the full 5-option list |
-| 3 | Column order | Optional integer ordering numbers. Columns with numbers are placed first in that order; blank columns follow in their natural left-to-right order |
-| 4 | System requirements | `Mandatory`, `Optional`, or `WOSPI Mandatory` — determines which row 2 dropdown list a column gets |
-| 5 | Manifest requirements | Reference only — not read by the script |
-| 6 | Bespoke autopopulate value | **Read by the script.** For hidden columns whose row 2 selection is `...use bespoke term`, the value here is written to every data row of that column in the generated manifest |
-| 7 | *(blank)* | — |
-| 8 | Interpreted Validation Rules | Reference only — may be incorporated in a future version |
-| 9 | Validation Rules | Reference only — may be incorporated in a future version |
-| 10 | Example row | Reference only |
-| 11 | ToL MANIFEST CATALOGUE | Section header |
-| 12 | Manifest names and versions | Column header row for the catalogue |
-| 13+ | *(catalogue entries)* | One row per existing manifest — col A = name, cols B+ = selection strings (see [Manifest Catalogue](#manifest-catalogue)) |
+| 1 | *(group labels, e.g. "mandatory fields, must be visible in all manifests")* | Reference only — not read by the script |
+| 2 | Project Name and Version | **Col A:** Project name used in all filenames and SOP text. Must be filled in before generating (e.g. `DToL_Bats_v1.0`). **Cols B+:** Column field names |
+| 3 | REQUIREMENT FOR NEW PROJECT MANIFEST | Project-level selection for each column — choose from the dropdown in each cell (see [Row 3 Dropdown Options](#row-3-dropdown-options)). The dropdown offered depends on row 5: system-mandatory columns get a restricted 3-option list, all others get the full 5-option list |
+| 4 | Column order | Optional integer ordering numbers. Columns with numbers are placed first in that order; blank columns follow in their natural left-to-right order |
+| 5 | System requirements | `Mandatory`, `Optional`, or `WOSPI Mandatory` — determines which row 3 dropdown list a column gets |
+| 6 | Manifest requirements | Reference only — not read by the script |
+| 7 | Bespoke autopopulate value | **Read by the script.** For hidden columns whose row 3 selection is `...use bespoke term`, the value here is written to every data row of that column in the generated manifest |
+| 8 | Notes | Free-text design notes filled in as needed — reference only, not read by the script |
+| 9 | Interpreted Validation Rules | Reference only — may be incorporated in a future version |
+| 10 | Validation Rules | Reference only — may be incorporated in a future version |
+| 11 | Example row | Reference only |
+| 12 | ToL MANIFEST CATALOGUE | Section header |
+| 13 | Manifest names and versions | Column header row for the catalogue |
+| 14+ | *(catalogue entries)* | One row per existing manifest — col A = name, cols B+ = selection strings (see [Manifest Catalogue](#manifest-catalogue)) |
 
-### Row 2 Dropdown Options
+### Row 3 Dropdown Options
 
 There is no `Exclude` option in the UI — leaving a column unset (`select option` or blank) has the same effect: it is silently left out of the generated manifest, with no error or blocking dialog.
 
-Columns where row 4 says `Mandatory` (or `WOSPI Mandatory`) get a restricted 3-option dropdown; all other columns get the full 5-option dropdown (which includes the unset placeholder):
+Columns where row 5 says `Mandatory` (or `WOSPI Mandatory`) get a restricted 3-option dropdown; all other columns get the full 5-option dropdown (which includes the unset placeholder):
 
 | Selection | Header colour | Meaning |
 |-----------|--------------|---------|
@@ -142,10 +144,10 @@ Columns where row 4 says `Mandatory` (or `WOSPI Mandatory`) get a restricted 3-o
 | `Optional, visible` | 🔵 Very light blue (dark blue text) | Partner may fill this in |
 | `Mandatory, hide, use NOT_COLLECTED` | ⬜ White | Hidden from partner; every data row pre-filled with `NOT_COLLECTED`. Offered on system-mandatory columns |
 | `Include, hide, use NOT_COLLECTED` | ⬜ White | Hidden from partner; every data row pre-filled with `NOT_COLLECTED`. Offered on non-system-mandatory columns |
-| `Mandatory, hide, use a bespoke term` | ⬜ White | Hidden from partner; every data row pre-filled with the value from row 6. Offered on system-mandatory columns |
-| `Include, hide, use bespoke term` | ⬜ White | Hidden from partner; every data row pre-filled with the value from row 6. Offered on non-system-mandatory columns |
+| `Mandatory, hide, use a bespoke term` | ⬜ White | Hidden from partner; every data row pre-filled with the value from row 7. Offered on system-mandatory columns |
+| `Include, hide, use bespoke term` | ⬜ White | Hidden from partner; every data row pre-filled with the value from row 7. Offered on non-system-mandatory columns |
 
-> **Bespoke term with no row 6 value:** If a `...use bespoke term` option is selected but row 6 is empty for that column, the manifest is still generated — but a warning is added as a cell comment on that column's header asking the curator to either fill in row 6 and regenerate, or populate the column manually.
+> **Bespoke term with no row 7 value:** If a `...use bespoke term` option is selected but row 7 is empty for that column, the manifest is still generated — but a warning is added as a cell comment on that column's header asking the curator to either fill in row 7 and regenerate, or populate the column manually.
 
 ---
 
@@ -155,36 +157,38 @@ After reloading the sheet, the **📋 ToL Manifest Tools** menu contains:
 
 | Menu item | Function | Description |
 |-----------|----------|-------------|
-| 🔍 Check catalogue for identical manifest | `checkCatalogue()` | Compares the current row 2 selections against all catalogue entries. Reports exact matches (same columns + same mandatory/optional/hidden status) and near matches (same columns, different nuance) |
-| 📂 Load from catalogue into row 2 | `loadFromCatalogue()` | Shows a numbered list of catalogue entries; the user picks one and row 2 is pre-populated with that manifest's selections. The user can then adjust before generating |
-| 🔄 Sync SOP comments to builder headers | `syncSopCommentsToBuilder()` | Fetches the latest SOP descriptions from the master SOP Doc and writes them as cell comments on the row 1 column headers of the builder sheet. Run this whenever the SOP source document is updated — no generation needed |
-| Generate manifest + SOP → ▶ Run generator | `generateManifest()` | Runs the full generation pipeline (see [What Gets Generated](#what-gets-generated)) |
+| 🔍 Check catalogue for identical manifest | `checkCatalogue()` | Compares the current row 3 selections against all catalogue entries. Reports exact matches (same columns + same mandatory/optional/hidden status) and near matches (same columns, different nuance) |
+| 📂 Load from catalogue into row 3 | `loadFromCatalogue()` | Shows a numbered list of catalogue entries; the user picks one and row 3 is pre-populated with that manifest's selections. The user can then adjust before generating |
+| ▶ Generate my manifest | `generateManifest()` | Runs the full generation pipeline (see [What Gets Generated](#what-gets-generated)) |
+| SM Only → 🔄 Sync SOP comments to builder headers | `syncSopCommentsToBuilder()` | Fetches the latest SOP descriptions from the master SOP Doc and writes them as cell comments on the row 2 column headers of the builder sheet. Run this whenever the SOP source document is updated — no generation needed |
 
-> **Why is Generate inside a submenu?** To prevent accidental triggering — generation creates and saves files to Google Drive and cannot be undone easily. The other functions are at the top level for quick access.
+> **Why is Sync tucked into a submenu?** It's an internal SM-team maintenance action, not something a PI needs day-to-day, so it's hidden behind the "SM Only" submenu to keep the top-level menu focused on the actions a PI actually needs: check, load, and generate.
 
 ---
 
 ## What Gets Generated
 
-Running **▶ Run generator** triggers a 17-step pipeline:
+Running **▶ Generate my manifest** triggers the generation pipeline:
 
-1. **Row 2 dropdowns refreshed** — validation rules applied to all row 2 cells automatically
-2. **Project name validated** — reads cell A1; prompts if blank or still says `"Project Name and Version"`
-3. **Duplicate check** — automatically compares the current row 2 selections against the catalogue. If an identical manifest already exists, a Yes/No dialog warns the PI before proceeding — even if they skipped the manual 🔍 Check catalogue step
-4. **Live SOP fetched** — opens the master SOP Google Doc and parses all bullet-point field descriptions. Generation is cancelled with an error if this fails (see [Error Messages](#error-messages))
-5. **Remaining builder rows read** — rows 3–4 read (rows 1–2 already read for the duplicate check)
-6. **Data Validation tab read** — dropdown lists loaded for applicable columns
-7. **Column list built** — each column classified as mandatory/optional/hidden_nc/hidden_bespoke based on row 2; unset or unrecognised selections are silently skipped (no blocking). Hidden columns get a `prefillVal` — either `NOT_COLLECTED` or the bespoke value from row 6
-8. **Empty-selection check** — generation only stops if *no* columns at all are selected
-9. **Column ordering applied** — columns with order numbers in row 3 are placed first; remaining columns follow in natural order
-10. **Manifest Google Sheet created** — named `ToL_Manifest_[ProjectName]_[YYYY-MM-DD]`, moved to shared folder
-11. **Header row written** — colour-coded, bold, text-wrapped, 60px tall, frozen. Hidden columns prefixed `[ignore]`
-12. **Data rows formatted** — 1920 rows with light column tints, grey grid borders, dropdowns, date validation, prefill values for hidden columns, amber missing-value highlight (mandatory columns without a prefill only)
-13. **Hidden columns hidden** — all `hidden_nc`/`hidden_bespoke` columns hidden in the sheet
-14. **Partner SOP tab added** — green tab inside the manifest sheet
-15. **Two SOP Google Docs created** — internal and partner-facing, both moved to shared folder
-16. **Catalogue row appended** — new row added to the builder sheet catalogue section
-17. **Summary popup shown** — links to all three output files, plus the catalogue row number
+1. **Row 3 dropdowns refreshed** — validation rules applied to all row 3 cells automatically
+2. **Project name validated** — reads cell A2; prompts if blank or still says `"Project Name and Version"`
+3. **Duplicate check** — automatically compares the current row 3 selections against the catalogue. If an identical manifest already exists, a Yes/No dialog warns the PI before proceeding — even if they skipped the manual 🔍 Check catalogue step
+4. **Iteration suffix computed** — if this project name & version already appears in the catalogue, an `-N` suffix (`-1`, `-2`, …) is appended so the new run's files, folder, and catalogue row stay distinguishable from earlier ones
+5. **Per-project subfolder resolved** — a subfolder named after the (possibly iterated) project name & version is found or created inside the shared output folder; falls back to the folder root if the subfolder can't be created
+6. **Live SOP fetched** — opens the master SOP Google Doc and parses all bullet-point field descriptions. Generation is cancelled with an error if this fails (see [Error Messages](#error-messages))
+7. **Remaining builder rows read** — rows 4–5 and 7 read
+8. **Data Validation tab read** — dropdown lists loaded for applicable columns
+9. **Column list built** — each column classified as mandatory/optional/hidden_nc/hidden_bespoke based on row 3; unset or unrecognised selections are silently skipped (no blocking). Hidden columns get a `prefillVal` — either `NOT_COLLECTED` or the bespoke value from row 7
+10. **Empty-selection check** — generation only stops if *no* columns at all are selected
+11. **Column ordering applied** — columns with order numbers in row 4 are placed first; remaining columns follow in natural order
+12. **Manifest Google Sheet created** — named `ToL_Manifest_[ProjectName][-N]_[YYYY-MM-DD]`, moved into the per-project subfolder
+13. **Header row written** — colour-coded, bold, text-wrapped, 60px tall, frozen. Hidden columns prefixed `[ignore]`
+14. **Data rows formatted** — 1920 rows with light column tints, grey grid borders, dropdowns, date validation, prefill values for hidden columns, amber missing-value highlight (mandatory columns without a prefill only)
+15. **Hidden columns hidden** — all `hidden_nc`/`hidden_bespoke` columns hidden in the sheet
+16. **Partner SOP tab added** — green tab inside the manifest sheet
+17. **Two SOP Google Docs created** — internal and partner-facing, both moved into the same per-project subfolder
+18. **Catalogue row appended** — new row (with the iteration suffix, if any) added to the builder sheet catalogue section
+19. **Summary popup shown** — links to all three output files, the output subfolder, and the catalogue row number, plus a note to contact the ToL Sample Management team for review
 
 ---
 
@@ -202,7 +206,7 @@ Running **▶ Run generator** triggers a 17-step pipeline:
 - Off-white — hidden columns
 - Grey grid borders on all cells
 - **Dropdown validation** on fields with controlled vocabularies (e.g. `ORGANISM_PART`, `LIFESTAGE`, `SEX`, `GAL`)
-- **Prefill values** — hidden columns are pre-filled in every data row with either `NOT_COLLECTED` or the bespoke value from builder sheet row 6, so partners never need to touch them
+- **Prefill values** — hidden columns are pre-filled in every data row with either `NOT_COLLECTED` or the bespoke value from builder sheet row 7, so partners never need to touch them
 - **Missing mandatory value highlight** — blank cells in mandatory columns *without* a prefill are highlighted **light green** (`#C8E6C9`), making missing required values immediately visible to data curators without being alarming
 - **Date validation** on `DATE_OF_COLLECTION`:
   - Cells pre-formatted as Text so Excel doesn't corrupt `YYYY-MM-DD` on `.xlsx` download
@@ -217,7 +221,7 @@ Running **▶ Run generator** triggers a 17-step pipeline:
 
 ## SOP Documents
 
-Two Google Docs are created per run, both saved to the shared output folder:
+Two Google Docs are created per run, both saved into the per-project subfolder alongside the manifest sheet:
 
 ### Internal SOP (`ToL_Internal_SOP_[name]_[date]`)
 - All columns listed including hidden ones
@@ -238,16 +242,16 @@ Both documents follow the format of the master SOP:
 
 ## Manifest Catalogue
 
-The catalogue section (rows 13+ of the builder sheet) records every manifest that has been generated. Each row contains:
+The catalogue section (rows 14+ of the builder sheet) records every manifest that has been generated. Each row contains:
 
-- **Col A** — manifest name and version (bold, yellow background when newly added, with a cell note for SM review)
+- **Col A** — manifest name and version, with an `-N` iteration suffix if this project name & version has been generated more than once (bold, yellow background when newly added)
 - **Cols B+** — full selection string for included columns (e.g. `Mandatory, visible`), empty for excluded columns; cells colour-coded to match the manifest headers (green/light blue/white for included, light grey for excluded)
 - **Row formatting** — font size 8, text wrap enabled, solid border around the full row
 
 > **Backwards compatibility:** Older catalogue rows using `TRUE`/`FALSE` checkboxes are still understood by both the catalogue checker and the load-from-catalogue function.
 
 ### Checking the catalogue
-**🔍 Check catalogue** compares the current row 2 selections against every named catalogue entry:
+**🔍 Check catalogue** compares the current row 3 selections against every named catalogue entry:
 - ✅ **Exact match** — identical columns AND identical mandatory/optional/hidden status throughout
 - 🔶 **Near match** — same set of columns included, but with different mandatory/optional/hidden nuance
 
@@ -258,7 +262,7 @@ The catalogue section (rows 13+ of the builder sheet) records every manifest tha
 2. DToL V2.6 WOSPI V1.0  (33 mandatory, 8 optional, 3 hidden)
 3. BIOSCAN sent  (28 mandatory, 5 optional, 2 hidden)
 ```
-The user types a number and row 2 is pre-populated with the exact selections from that entry. Columns not in the catalogue entry are set to `select option` (unset). The user can then adjust selections before generating.
+The user types a number and row 3 is pre-populated with the exact selections from that entry. Columns not in the catalogue entry are set to `select option` (unset). The user can then adjust selections before generating.
 
 > **Future enhancement (Option B):** A searchable HTML sidebar (using Google Apps Script's `HtmlService`) could replace the text prompt for better usability as the catalogue grows. See the comment block above `loadFromCatalogue()` in the script for implementation notes.
 
@@ -270,12 +274,12 @@ The user types a number and row 2 is pre-populated with the exact selections fro
 |-------|-------|------------|
 | `Sheet "all_manifest_builder_v1.0" not found` | The builder tab has been renamed or deleted | Rename the tab to match `BUILDER_SHEET_NAME` in the script constants |
 | `Sheet "Data Validation" not found` | The Data Validation tab is missing | Restore the tab or update `DATA_VAL_SHEET_NAME` |
-| `Cell A1 is blank` | Project name not filled in | Enter the project name and version in cell A1 (e.g. `DToL_Bats_v1.0`) |
+| `Cell A2 is blank` | Project name not filled in | Enter the project name and version in cell A2 (e.g. `DToL_Bats_v1.0`) |
 | `Generation cancelled — no project name provided` | User dismissed the project name prompt | Re-run and enter a name when prompted |
 | `⚠️ SOP Sync Failed — Manifest NOT generated` | The master SOP Google Doc could not be opened | Check that the Doc (ID in `SOP_DOC_ID`) is shared with the account running the script. See full error for the specific reason |
 | `The SOP file appears to be a .docx file` | `SOP_DOC_ID` points to a `.docx` file in Drive rather than a native Google Doc | One-time fix: open the file in Drive → **File → Save as Google Docs** → copy the new Doc ID from the URL → update `SOP_DOC_ID` in the script. `DocumentApp` cannot open `.docx` files even if you have edit access |
 | `SOP Doc opened but only N column description(s) parsed` | The SOP Doc structure has changed or the wrong Doc ID is set | Check the Doc ID in `SOP_DOC_ID` and verify the Doc contains bullet-point field descriptions in the expected format (`FIELDNAME: description`) |
-| `No columns are selected in row 2. Please choose an option for at least one column` | All columns are unset (`select option` or blank) | Select an option for at least one column in row 2. Individually unset columns no longer block generation — they are silently excluded |
+| `No columns are selected in row 3. Please choose an option for at least one column` | All columns are unset (`select option` or blank) | Select an option for at least one column in row 3. Individually unset columns no longer block generation — they are silently excluded |
 | `No catalogue entries found` | The catalogue section is empty or starts below `CATALOGUE_DATA_START` | Check the builder sheet and update `CATALOGUE_DATA_START` if the section has moved |
 
 ### SOP sync failure in detail
@@ -308,7 +312,7 @@ Partners working in Excel will not see a rejection popup for wrong dates, but th
 Dropdown validation is not preserved in `.xlsx` downloads. Partners working in Excel should refer to the Partner SOP document for the list of accepted values for controlled-vocabulary fields.
 
 ### Shared folder permissions
-Files are saved to the shared folder under the permissions of whoever runs the script. If a PI runs the generator and does not have Editor access to the shared folder (`OUTPUT_FOLDER_ID`), the files will be created in their personal Drive root instead. The script logs a warning but generation completes. The SM team should ensure all users who may run the script have Editor access to the shared folder.
+Files are saved to the shared folder (inside a per-project subfolder) under the permissions of whoever runs the script. If a PI runs the generator and does not have Editor access to the shared folder (`OUTPUT_FOLDER_ID`), the subfolder can't be created/accessed and the files will be created in their personal Drive root instead. The script logs a warning and the summary popup notes this, but generation completes. The SM team should ensure all users who may run the script have Editor access to the shared folder.
 
 ### Automatic page numbers in SOP Docs
 `DocumentApp` does not support inserting automatic page number fields. Page numbers must be added manually via **Insert → Page numbers** in the generated Google Doc.
@@ -319,12 +323,12 @@ Files are saved to the shared folder under the permissions of whoever runs the s
 
 ### Recommended workflow (current)
 1. **SM team** shares the master builder sheet with the PI (or the PI makes a copy)
-2. **PI** fills in row 2 — selecting an option for each column using the dropdowns
+2. **PI** fills in row 3 — selecting an option for each column using the dropdowns
 3. **PI** (or SM team) runs **🔍 Check catalogue** to confirm this is not a duplicate of an existing manifest
-4. **PI** (or SM team) runs **▶ Run generator**
-5. All three output files appear in the **shared SM team folder** automatically
-6. A new **catalogue row** (highlighted yellow in col A) is appended to the builder sheet for SM review
-7. **SM team** reviews the catalogue row, removes the yellow highlight, and copies it to the master catalogue if approved
+4. **PI** (or SM team) runs **▶ Generate my manifest**
+5. All three output files land automatically in a per-project subfolder (named after the project name & version) inside the **shared SM team folder** — the summary popup shows the folder name and link
+6. A new **catalogue row** (highlighted yellow in col A, with an `-N` suffix if this is a repeat run) is appended to the builder sheet catalogue for SM review
+7. The summary popup asks the PI to contact the ToL Sample Management team (`treeoflifesamples@sanger.ac.uk`) if they'd like the row checked, or to update their selections and regenerate if it isn't what they need
 
 ### Future workflow (planned)
 A Google Apps Script **Web App** (publishable as a URL) could allow PIs to fill in selections via a web form that runs the generator under the SM team's credentials — meaning files always land in the SM team's Drive without requiring the PI to have folder access. See the `createSopDoc_` section of the script for notes on this approach.
@@ -337,7 +341,7 @@ The script fetches column descriptions from the master SOP Google Doc at run-tim
 1. Edit the SOP Google Doc directly (no script changes needed)
 2. Ensure field entries remain as bullet-point list items in the format `FIELDNAME: description text`
 3. Field names must be `ALL_CAPS_WITH_UNDERSCORES` — the parser identifies them by the absence of lowercase letters before the first colon
-4. Run **🔄 Sync SOP comments to builder headers** to update the comments on the builder sheet's row 1 headers immediately
+4. Run **SM Only → 🔄 Sync SOP comments to builder headers** to update the comments on the builder sheet's row 2 headers immediately
 5. The next manifest generation will automatically use the updated descriptions in the generated manifest and SOP docs
 
 If the Doc structure changes significantly (e.g. bullet points replaced with a different format), the parser may return fewer than 5 entries and halt with an error. In this case, update the `fetchSopComments_()` function's parsing logic to match the new structure.
@@ -354,14 +358,16 @@ To change where output files are saved:
 3. Update `OUTPUT_FOLDER_ID` in the Constants section of `ManifestGenerator.gs`
 4. Ensure all script users have Editor access to the new folder
 
+Per-project subfolders are created automatically underneath `OUTPUT_FOLDER_ID` — there is nothing else to configure.
+
 ---
 
 ## Updating Dropdown Options
 
-The row 2 dropdown options are defined in `BUILDER_DROPDOWN_OPTIONS_MANDATORY` (3 options, offered on system-mandatory columns) and `BUILDER_DROPDOWN_OPTIONS_OPTIONAL` (5 options, offered on all other columns). If the wording needs to change:
+The row 3 dropdown options are defined in `BUILDER_DROPDOWN_OPTIONS_MANDATORY` (3 options, offered on system-mandatory columns) and `BUILDER_DROPDOWN_OPTIONS_OPTIONAL` (5 options, offered on all other columns). If the wording needs to change:
 1. Update the two arrays in the Constants section
 2. Update the corresponding `SEL_*` trigger constants and the derived `HIDDEN_NC_TRIGGERS`/`HIDDEN_BESPOKE_TRIGGERS`/`ALL_HIDDEN_TRIGGERS` arrays to match the new lowercase versions
-3. Re-run the generator once — the updated dropdowns will be applied to row 2 automatically at the start of the next generation run
+3. Re-run the generator once — the updated dropdowns will be applied to row 3 automatically at the start of the next generation run
 
 ---
 
@@ -375,6 +381,7 @@ This script is maintained by the Tree of Life Sample Management team at the Well
 
 | Version | Date | Notes |
 |---------|------|-------|
+| 0.11 | 2026-07 | Builder sheet rows shifted by one (new unused label row 1) plus an extra Notes row 8 — all row constants updated (selections now row 3, catalogue now starts row 14); output files now saved into a per-project subfolder (named by project & version) inside the shared folder; regenerating the same project name & version now appends an `-N` iteration suffix to the catalogue row and output filenames; removed the "pending SM team review" cell note; summary popup now points PIs to `treeoflifesamples@sanger.ac.uk` instead of asking them to copy the row to a master catalogue; new shared output folder ID; menu reorganised — Generate is back at the top level as "Generate my manifest", Sync SOP comments moved into a new "SM Only" submenu |
 | 0.10 | 2026-06 | New colour palette: forest green mandatory headers, very light blue/dark blue text optional headers; mandatory/optional data cells now plain white (no tint); missing-mandatory highlight changed from amber to light green |
 | 0.9 | 2026-06 | New row 2 vocabulary (`Mandatory, visible` / `Optional, visible` / hide-and-prefill options); row 6 bespoke autopopulate values; unset selections no longer block generation (silently excluded); hidden columns auto-prefilled with `NOT_COLLECTED` or bespoke term; `MANIFEST_DATA_ROWS` increased to 1920 |
 | 0.8 | 2026-06 | Fix date CF false positives (remove TEXT() wrapper); auto duplicate-check before generation; white text on mandatory catalogue/SOP cells |

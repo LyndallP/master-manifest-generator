@@ -7,26 +7,31 @@
  * WHAT IT GENERATES (per run):
  *   1. A new Google Sheets manifest file — tab named "Metadata Entry",
  *      with 1920 data rows, colour-coded headers, dropdowns, and date
- *      validation. Saved to the shared output folder in Google Drive.
+ *      validation. Saved to a per-project subfolder in the shared output
+ *      folder in Google Drive.
  *   2. An internal SOP Google Doc — all columns listed, hidden columns
- *      marked [HIDDEN] and greyed. Saved to the shared output folder.
+ *      marked [HIDDEN] and greyed. Saved to the same subfolder.
  *   3. A partner-facing SOP Google Doc — hidden columns omitted, with a
- *      note explaining they require no input. Saved to the shared folder.
+ *      note explaining they require no input. Saved to the same subfolder.
  *   4. A partner SOP tab inside the manifest Google Sheet.
  *   5. A new row in the ToL Manifest Catalogue section of the builder
  *      sheet — col A highlighted yellow, other cells colour-coded to
  *      match the manifest headers (green/blue/white). For SM team review.
+ *      If the project name & version matches an existing catalogue entry,
+ *      an iteration suffix ("-1", "-2", …) is appended.
  *
  * MENU (📋 ToL Manifest Tools):
  *   • 🔍 Check catalogue for identical manifest  → checkCatalogue()
- *   • 📂 Load from catalogue into row 2          → loadFromCatalogue()
- *   • 🔄 Sync SOP comments to builder headers    → syncSopCommentsToBuilder()
- *   • Generate manifest + SOP > ▶ Run generator  → generateManifest()
+ *   • 📂 Load from catalogue into row 3          → loadFromCatalogue()
+ *   • ▶ Generate my manifest                     → generateManifest()
+ *   • SM Only > 🔄 Sync SOP comments to builder headers
+ *                                                 → syncSopCommentsToBuilder()
  *
  * BUILDER SHEET STRUCTURE (all_manifest_builder_v1.0):
- *   Row 1 — Column names  |  Col A = project name & version
- *   Row 2 — Project selections (dropdown per column). The dropdown list
- *           offered depends on row 4 (system-mandatory columns get a
+ *   Row 1 — Column group labels (reference only, not used by script)
+ *   Row 2 — Column names  |  Col A = project name & version
+ *   Row 3 — Project selections (dropdown per column). The dropdown list
+ *           offered depends on row 5 (system-mandatory columns get a
  *           restricted 3-option list; all others get the full 5-option
  *           list, including the unset placeholder):
  *             "Mandatory, visible"                  → mandatory header
@@ -40,19 +45,20 @@
  *                                                    → hidden column,
  *                                                      every data row
  *                                                      pre-filled with the
- *                                                      value from row 6
+ *                                                      value from row 7
  *             "select option" / blank                → unset — silently
  *                                                       excluded from the
  *                                                       manifest (no error)
  *           There is no "Exclude" option in the UI — leaving a column
  *           unset has the same effect.
- *   Row 3 — Column order numbers (optional; blank = keep natural order)
- *   Row 4 — System requirements (Mandatory/Optional) — determines which
- *            row 2 dropdown list a column gets
- *   Row 5 — Manifest requirements (reference only, not used by script)
- *   Row 6 — Bespoke autopopulate values — read by the script to pre-fill
- *            hidden columns whose row 2 selection is "...use bespoke term"
- *   Rows 12+ — ToL Manifest Catalogue (one row per past manifest)
+ *   Row 4 — Column order numbers (optional; blank = keep natural order)
+ *   Row 5 — System requirements (Mandatory/Optional) — determines which
+ *            row 3 dropdown list a column gets
+ *   Row 6 — Manifest requirements (reference only, not used by script)
+ *   Row 7 — Bespoke autopopulate values — read by the script to pre-fill
+ *            hidden columns whose row 3 selection is "...use bespoke term"
+ *   Row 8 — Notes (reference only, not used by script)
+ *   Rows 14+ — ToL Manifest Catalogue (one row per past manifest)
  *
  * CONFIGURATION (edit the constants below):
  *   BUILDER_SHEET_NAME  — name of the builder tab
@@ -81,19 +87,23 @@ const MANIFEST_TAB_NAME   = 'Metadata Entry';
 const MANIFEST_DATA_ROWS  = 1920;
 
 // Builder sheet row numbers
-const ROW_PROJECT_NAME  = 1;   // Col A: project name & version
-const ROW_SELECTION     = 2;   // Include/exclude/hidden choices
-const ROW_COL_ORDER     = 3;   // Optional column ordering numbers
-const ROW_SYSTEM_REQ    = 4;   // System requirements (Mandatory/Optional)
-const ROW_MANIFEST_REQ  = 5;   // Manifest requirements (reference only)
-const ROW_BESPOKE       = 6;   // Bespoke autopopulate values for hidden columns
+// Row 1 is a group-label row (e.g. "mandatory fields, must be visible in all
+// manifests") and is not read by the script.
+const ROW_PROJECT_NAME  = 2;   // Col A: project name & version
+const ROW_SELECTION     = 3;   // Include/exclude/hidden choices
+const ROW_COL_ORDER     = 4;   // Optional column ordering numbers
+const ROW_SYSTEM_REQ    = 5;   // System requirements (Mandatory/Optional)
+const ROW_MANIFEST_REQ  = 6;   // Manifest requirements (reference only)
+const ROW_BESPOKE       = 7;   // Bespoke autopopulate values for hidden columns
+// Row 8 is a free-text Notes row (design-process comments) — reference only,
+// not read by the script.
 
 // Catalogue section
-const CATALOGUE_HEADER_ROW = 11;  // "Manifest names and versions"
-const CATALOGUE_DATA_START = 12;  // First project row
+const CATALOGUE_HEADER_ROW = 13;  // "Manifest names and versions"
+const CATALOGUE_DATA_START = 14;  // First project row
 
 // Project name cell
-const PROJECT_NAME_CELL = 'A1';
+const PROJECT_NAME_CELL = 'A2';
 
 // Date column
 const DATE_COLUMN_NAME = 'DATE_OF_COLLECTION';
@@ -101,10 +111,11 @@ const DATE_COLUMN_NAME = 'DATE_OF_COLLECTION';
 // SOP Google Doc ID (fetched live at run-time)
 const SOP_DOC_ID = '10WMIZ9GuB0hj5pBzFkz1U2V3_KwIFH-3cAud6h3-Gow';
 
-// Shared output folder — all generated files are moved here after creation.
+// Shared output folder — a per-project subfolder is created/reused inside this
+// folder on every run, and all generated files are moved there after creation.
 // To change: replace the ID with the new folder ID from the Drive URL.
-// Current: https://drive.google.com/drive/folders/1tnQ7ciifegXd_4HUPcZ4me4kdBtRxnii
-const OUTPUT_FOLDER_ID = '1tnQ7ciifegXd_4HUPcZ4me4kdBtRxnii';
+// Current: https://drive.google.com/drive/folders/1hGB3WXCTcc78oW230iizswW5jQd2-5uE
+const OUTPUT_FOLDER_ID = '1hGB3WXCTcc78oW230iizswW5jQd2-5uE';
 
 // ─── Colours ──────────────────────────────────────────────────────────────────
 // Single source of truth — changing these updates both sheet headers and SOP highlights.
@@ -166,7 +177,7 @@ const ALL_HIDDEN_TRIGGERS     = [...HIDDEN_NC_TRIGGERS, ...HIDDEN_BESPOKE_TRIGGE
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN: generateManifest()
 // Orchestrates the full manifest generation pipeline (steps 1–17).
-// Called from the menu: 📋 ToL Manifest Tools > Generate manifest + SOP > ▶ Run generator
+// Called from the menu: 📋 ToL Manifest Tools > ▶ Generate my manifest
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function generateManifest() {
@@ -177,7 +188,7 @@ function generateManifest() {
   if (!builder) { alert_(`Sheet "${BUILDER_SHEET_NAME}" not found.`); return; }
   if (!dvSheet)  { alert_(`Sheet "${DATA_VAL_SHEET_NAME}" not found.`); return; }
 
-  // ── Step 1: Apply row 2 dropdowns (fast, harmless every run) ─────────────
+  // ── Step 1: Apply row 3 dropdowns (fast, harmless every run) ─────────────
   applyBuilderDropdowns_(builder);
 
   // ── Step 2: Read & validate project name ─────────────────────────────────
@@ -224,6 +235,20 @@ function generateManifest() {
     }
   }
 
+  // ── Step 3b: Work out the iteration suffix ───────────────────────────────
+  // If this project name & version already appears in the catalogue, append
+  // "-1", "-2", etc. so regenerated manifests are clearly distinguishable.
+  const iteration    = getNextIteration_(builder, projectName);
+  const versionedName = iteration > 0 ? `${projectName}-${iteration}` : projectName;
+
+  // ── Step 3c: Get/create the per-project output subfolder ────────────────
+  let projectFolder = null;
+  try {
+    projectFolder = getOrCreateProjectFolder_(versionedName);
+  } catch (e) {
+    Logger.log(`⚠️  Could not create/access project subfolder "${versionedName}": ${e.message}`);
+  }
+
   // ── Step 4: Fetch live SOP descriptions ──────────────────────────────────
   let sopComments;
   try {
@@ -268,7 +293,7 @@ function generateManifest() {
     const prefillVal  = inclusion === 'hidden_nc' ? 'NOT_COLLECTED'
                       : inclusion === 'hidden_bespoke' ? bespokeVal : null;
 
-    // Column order number from row 3 (blank = null = keep natural order)
+    // Column order number from row 4 (blank = null = keep natural order)
     const orderVal = row3[col - 1];
     const orderNum = (orderVal !== null && orderVal !== '' && !isNaN(Number(orderVal)))
       ? Number(orderVal) : null;
@@ -289,11 +314,11 @@ function generateManifest() {
 
   // ── Step 8: Require at least one selected column ─────────────────────────
   if (rawColumns.length === 0) {
-    alert_('No columns are selected in row 2. Please choose an option for at least one column.');
+    alert_('No columns are selected in row 3. Please choose an option for at least one column.');
     return;
   }
 
-  // ── Step 9: Apply column ordering from row 3 ─────────────────────────────
+  // ── Step 9: Apply column ordering from row 4 ─────────────────────────────
   // Columns with an order number sort by that number first;
   // columns without (null) retain their natural left-to-right order after numbered ones.
   const numbered   = rawColumns.filter(c => c.orderNum !== null).sort((a, b) =>
@@ -304,13 +329,13 @@ function generateManifest() {
 
   // ── Step 10: Create the Google Sheets file ───────────────────────────────
   const today    = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  const safeName = projectName.replace(/[\\/:*?"<>|]/g, '_');
+  const safeName = versionedName.replace(/[\\/:*?"<>|]/g, '_');
   const baseName = `ToL_Manifest_${safeName}_${today}`;
   const newSS    = SpreadsheetApp.create(baseName);
   const manifest = newSS.getActiveSheet();
   manifest.setName(MANIFEST_TAB_NAME);
-  // Move manifest to shared output folder immediately after creation
-  moveToOutputFolder_(newSS.getId());
+  // Move manifest to the per-project output subfolder immediately after creation
+  moveToOutputFolder_(newSS.getId(), projectFolder);
 
   const numCols = columns.length;
 
@@ -386,18 +411,18 @@ function generateManifest() {
       applyDateFormatting_(manifest, colNum, dataStart, dataEnd);
     }
 
-    // Pre-fill hidden columns with NOT_COLLECTED or bespoke value from row 6
+    // Pre-fill hidden columns with NOT_COLLECTED or bespoke value from row 7
     if (col.prefillVal !== null && col.prefillVal !== '') {
       const prefillRange = manifest.getRange(dataStart, colNum, MANIFEST_DATA_ROWS, 1);
       prefillRange.setValues(Array(MANIFEST_DATA_ROWS).fill([col.prefillVal]));
     } else if (col.inclusion === 'hidden_bespoke') {
-      // Bespoke selected but row 6 is empty — warn via header cell comment
+      // Bespoke selected but row 7 is empty — warn via header cell comment
       const existing = manifest.getRange(1, colNum).getComment()
         ? manifest.getRange(1, colNum).getComment().getText() + '\n\n' : '';
       manifest.getRange(1, colNum).setComment(
         existing +
-        '⚠️ Bespoke term selected in row 2 but no value found in row 6 of the builder sheet. ' +
-        'Please populate this column manually or add the term to row 6 and regenerate.'
+        '⚠️ Bespoke term selected in row 3 but no value found in row 7 of the builder sheet. ' +
+        'Please populate this column manually or add the term to row 7 and regenerate.'
       );
     }
 
@@ -420,33 +445,38 @@ function generateManifest() {
   hiddenCols.slice().reverse().forEach(c => manifest.hideColumns(c));
 
   // ── Step 14: Add partner-facing SOP tab ───────────────────────────────────
-  addPartnerSopTab_(newSS, columns, today, sopComments, projectName);
+  addPartnerSopTab_(newSS, columns, today, sopComments, versionedName);
 
   // ── Step 15: Create two SOP Google Docs ──────────────────────────────────
-  const internalDoc = createSopDoc_(baseName, columns, today, sopComments, projectName, false);
-  moveToOutputFolder_(internalDoc.getId());
-  const partnerDoc  = createSopDoc_(baseName, columns, today, sopComments, projectName, true);
-  moveToOutputFolder_(partnerDoc.getId());
+  const internalDoc = createSopDoc_(baseName, columns, today, sopComments, versionedName, false);
+  moveToOutputFolder_(internalDoc.getId(), projectFolder);
+  const partnerDoc  = createSopDoc_(baseName, columns, today, sopComments, versionedName, true);
+  moveToOutputFolder_(partnerDoc.getId(), projectFolder);
 
   // ── Step 16: Append catalogue row to builder sheet ───────────────────────
-  const catRowNum = appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2);
+  const catRowNum = appendCatalogueRow_(builder, versionedName, columns, lastCol, row1, row2);
 
   // ── Step 17: Summary ─────────────────────────────────────────────────────
   const sheetUrl   = newSS.getUrl();
   const internalUrl = internalDoc.getUrl();
   const partnerUrl  = partnerDoc.getUrl();
+  const folderUrl   = projectFolder ? projectFolder.getUrl() : null;
   Logger.log(`Manifest:     ${sheetUrl}`);
   Logger.log(`Internal SOP: ${internalUrl}`);
   Logger.log(`Partner SOP:  ${partnerUrl}`);
+  Logger.log(`Folder:       ${folderUrl || '(subfolder unavailable — files saved to Drive root)'}`);
 
   alert_(
     `✅ Generation complete!\n\n` +
     `📊 Manifest:\n${sheetUrl}\n\n` +
     `📄 Internal SOP:\n${internalUrl}\n\n` +
     `📄 Partner SOP:\n${partnerUrl}\n\n` +
-    `Project: ${projectName} | Columns: ${numCols} (${hiddenCols.length} hidden)\n\n` +
-    `📋 Catalogue row added at row ${catRowNum} of the builder sheet (highlighted yellow).\n` +
-    `Please copy this row to the master manifest catalogue when ready.\n\n` +
+    `Project: ${versionedName} | Columns: ${numCols} (${hiddenCols.length} hidden)\n\n` +
+    (folderUrl
+      ? `📁 All files saved to the "${versionedName}" folder:\n${folderUrl}\n\n`
+      : `⚠️ Could not access the shared output folder — files were saved to your Drive root instead.\n\n`) +
+    `📋 Catalogue row added at row ${catRowNum} of the builder sheet (highlighted yellow).\n\n` +
+    `If this looks good to you, or if you're unsure, get in touch with the ToL Sample Management team at treeoflifesamples@sanger.ac.uk. If it's not what you need, update your selections and regenerate.\n\n` +
     `All URLs saved to Apps Script log.`
   );
 }
@@ -454,7 +484,7 @@ function generateManifest() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helper: findExactCatalogueMatches_(builder, lastCol, row1, row2)
 // Returns an array of catalogue entry names whose column selections exactly
-// match the current row 2. Used by generateManifest() to warn before
+// match the current row 3. Used by generateManifest() to warn before
 // creating a duplicate, and by checkCatalogue() for its exact-match report.
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -505,8 +535,43 @@ function findExactCatalogueMatches_(builder, lastCol, row1, row2) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Helper: getNextIteration_(builder, projectName)
+// Looks through the catalogue's col A entries for names matching projectName,
+// either bare (first generation) or with a trailing "-N" iteration suffix
+// from a previous regeneration. Returns 0 if no matching entry exists yet
+// (no suffix needed), otherwise the next iteration number (1, 2, 3, …).
+// Used by generateManifest() so regenerating the same project name & version
+// doesn't overwrite/duplicate the previous catalogue entry or output files.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function getNextIteration_(builder, projectName) {
+  const lastRow = builder.getLastRow();
+  if (lastRow < CATALOGUE_DATA_START) return 0;
+
+  const names = builder
+    .getRange(CATALOGUE_DATA_START, 1, lastRow - CATALOGUE_DATA_START + 1, 1)
+    .getValues()
+    .map(r => String(r[0] || '').trim());
+
+  const escaped = projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^${escaped}(?:-(\\d+))?$`, 'i');
+
+  let found = false;
+  let maxIteration = 0;
+  names.forEach(name => {
+    const m = name.match(pattern);
+    if (!m) return;
+    found = true;
+    const n = m[1] ? parseInt(m[1], 10) : 0;
+    if (n > maxIteration) maxIteration = n;
+  });
+
+  return found ? maxIteration + 1 : 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN: checkCatalogue()
-// Compares the current row 2 selections against every named entry in the
+// Compares the current row 3 selections against every named entry in the
 // catalogue section. Reports exact matches (same columns + same nuance)
 // and near matches (same columns, different mandatory/optional/hidden status).
 // Called from the menu: 📋 ToL Manifest Tools > 🔍 Check catalogue
@@ -539,7 +604,7 @@ function checkCatalogue() {
   }
 
   if (currentCols.size === 0) {
-    alert_('No columns are currently selected in row 2. Please make selections before checking the catalogue.');
+    alert_('No columns are currently selected in row 3. Please make selections before checking the catalogue.');
     return;
   }
 
@@ -631,7 +696,7 @@ function checkCatalogue() {
 //   Replace the prompt() dialog below with a HtmlService sidebar that renders
 //   a search input and a card-per-manifest list (showing mandatory/optional/hidden
 //   counts as coloured badges). On selection, it calls google.script.run to write
-//   the row 2 values back. Build with HtmlService.createHtmlOutputFromFile() and
+//   the row 3 values back. Build with HtmlService.createHtmlOutputFromFile() and
 //   SpreadsheetApp.getUi().showSidebar(). The catalogue data can be passed into
 //   the HTML template via a scriptlet or via google.script.run return value.
 //   See: https://developers.google.com/apps-script/guides/html/communication
@@ -691,7 +756,7 @@ function loadFromCatalogue() {
   const ui       = SpreadsheetApp.getUi();
   const response = ui.prompt(
     'Load from catalogue',
-    `Enter the number of the manifest to pre-populate row 2:\n\n${listLines}\n`,
+    `Enter the number of the manifest to pre-populate row 3:\n\n${listLines}\n`,
     ui.ButtonSet.OK_CANCEL
   );
 
@@ -705,9 +770,9 @@ function loadFromCatalogue() {
   const selected  = entries[choice - 1];
   const catRow    = catData[selected.dataRowIdx];
 
-  // ── Write selections back into row 2 ─────────────────────────────────────
+  // ── Write selections back into row 3 ─────────────────────────────────────
   // For each column in the catalogue entry:
-  //   • Full selection string → write directly into row 2
+  //   • Full selection string → write directly into row 3
   //   • Old TRUE checkbox     → map to "Mandatory, visible"
   //   • Empty / FALSE         → write "select option" (unset)
   // Columns that don't appear in the catalogue (new columns added since) are left as-is.
@@ -748,10 +813,10 @@ function loadFromCatalogue() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN: syncSopCommentsToBuilder()
 // Fetches the latest SOP descriptions from the master SOP Google Doc and writes
-// them as cell comments on the row 1 column headers of the builder sheet
+// them as cell comments on the row 2 column headers of the builder sheet
 // (all_manifest_builder_v1.0). This keeps the builder sheet up to date whenever
 // the SOP source document is edited, without needing to run a full generation.
-// Called from the menu: 📋 ToL Manifest Tools > 🔄 Sync SOP comments to builder headers
+// Called from the menu: 📋 ToL Manifest Tools > SM Only > 🔄 Sync SOP comments to builder headers
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function syncSopCommentsToBuilder() {
@@ -767,7 +832,7 @@ function syncSopCommentsToBuilder() {
     alert_(`⚠️ SOP Sync Failed\n\n${e.message}`); return;
   }
 
-  // Apply comments to every named header cell in row 1 (skip col 1 = label column)
+  // Apply comments to every named header cell in row 2 (skip col 1 = label column)
   const lastCol = builder.getLastColumn();
   const row1    = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
   let updated = 0;
@@ -795,8 +860,8 @@ function syncSopCommentsToBuilder() {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helper: applyBuilderDropdowns_(builder)
-// Applies the row 2 dropdown validation list to every column in the builder
-// sheet. Columns whose row 4 system requirement is "Mandatory" get the
+// Applies the row 3 dropdown validation list to every column in the builder
+// sheet. Columns whose row 5 system requirement is "Mandatory" get the
 // restricted 3-option list; all other columns get the full 5-option list
 // (including the unset placeholder). Runs automatically at the start of
 // generateManifest() so the dropdowns are always up to date.
@@ -1289,8 +1354,9 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
  * Appends a new row to the ToL Manifest Catalogue section of the builder sheet.
  *
  * Format of the new row:
- *   Col A  = project name, bold, yellow background, with a cell note
- *            flagging it as pending SM team review.
+ *   Col A  = project name (with an "-N" iteration suffix if this project
+ *            name & version was already generated before), bold, yellow
+ *            background to flag it as pending SM team review.
  *   Col B+ = full selection string for included columns (e.g. "Mandatory,
  *            visible"), empty string for excluded/unset.
  *            Each cell is colour-coded to match the manifest headers:
@@ -1301,7 +1367,7 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
  *
  * This richer format (vs old TRUE/FALSE checkboxes) allows loadFromCatalogue()
  * to restore the exact mandatory/optional/hidden nuance when pre-populating
- * row 2, and allows checkCatalogue() to distinguish exact vs near matches.
+ * row 3, and allows checkCatalogue() to distinguish exact vs near matches.
  * Old TRUE/FALSE rows in the catalogue are still supported by both functions.
  *
  * Insertion: finds the last named row in the catalogue section and inserts
@@ -1351,10 +1417,6 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   // Col A: yellow to flag as new/pending SM review
   const nameCell = builder.getRange(insertRow, 1);
   nameCell.setBackground('#FFF9C4').setFontWeight('bold');
-  nameCell.setNote(
-    'Generated ' + new Date().toLocaleDateString() +
-    ' — pending SM team review. Copy this row to the master manifest catalogue.'
-  );
 
   // Cols B onward: colour-coded to match the manifest header colours
   //   Forest green = mandatory → white text
@@ -1386,20 +1448,22 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Moves a Drive file into OUTPUT_FOLDER_ID and removes it from all other parents
- * (Drive creates files in the root by default — this relocates them).
- * Falls back gracefully if the folder ID is wrong or permissions are missing.
+ * Moves a Drive file into the given folder (or OUTPUT_FOLDER_ID itself if no
+ * folder is passed) and removes it from all other parents (Drive creates
+ * files in the root by default — this relocates them).
+ * Falls back gracefully if the folder is wrong/inaccessible or permissions
+ * are missing.
  */
-function moveToOutputFolder_(fileId) {
+function moveToOutputFolder_(fileId, folder) {
   try {
-    const folder = DriveApp.getFolderById(OUTPUT_FOLDER_ID);
-    const file   = DriveApp.getFileById(fileId);
-    folder.addFile(file);
+    const targetFolder = folder || DriveApp.getFolderById(OUTPUT_FOLDER_ID);
+    const file = DriveApp.getFileById(fileId);
+    targetFolder.addFile(file);
     // Remove from root / any other parents
     const parents = file.getParents();
     while (parents.hasNext()) {
       const parent = parents.next();
-      if (parent.getId() !== OUTPUT_FOLDER_ID) {
+      if (parent.getId() !== targetFolder.getId()) {
         parent.removeFile(file);
       }
     }
@@ -1407,6 +1471,22 @@ function moveToOutputFolder_(fileId) {
     Logger.log(`⚠️  Could not move file ${fileId} to output folder: ${e.message}`);
     // Non-fatal — file still exists in Drive root
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper: getOrCreateProjectFolder_(folderName)
+// Finds (or creates) a subfolder named folderName directly inside
+// OUTPUT_FOLDER_ID. All files from a single generateManifest() run (the
+// manifest sheet + both SOP docs) are moved into this subfolder, so every
+// project/version (and each of its iterations) has its own tidy folder
+// inside the shared output folder. Throws if OUTPUT_FOLDER_ID itself is
+// inaccessible — the caller catches this and falls back to the folder root.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function getOrCreateProjectFolder_(folderName) {
+  const parent   = DriveApp.getFolderById(OUTPUT_FOLDER_ID);
+  const existing = parent.getFoldersByName(folderName);
+  return existing.hasNext() ? existing.next() : parent.createFolder(folderName);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1422,27 +1502,25 @@ function alert_(msg) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Menu: onOpen()
 // Runs automatically when the spreadsheet is opened. Adds the
-// '📋 ToL Manifest Tools' menu with four items:
+// '📋 ToL Manifest Tools' menu with:
 //   • 🔍 Check catalogue for identical manifest  (top-level, easy access)
-//   • 📂 Load from catalogue into row 2          (top-level, easy access)
-//   • 🔄 Sync SOP comments to builder headers    (top-level — run after SOP edits)
-//   • Generate manifest + SOP > ▶ Run generator  (in submenu — prevents
-//     accidental triggering of the full generation pipeline)
+//   • 📂 Load from catalogue into row 3          (top-level, easy access)
+//   • ▶ Generate my manifest                     (top-level — the main action)
+//   • SM Only > 🔄 Sync SOP comments to builder headers
+//     (tucked away in a submenu — internal SM team use only)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
 
-  // Top-level menu: catalogue and SOP sync are immediately accessible
-  // Generate manifest lives in a submenu so it is harder to trigger accidentally
   ui.createMenu('📋 ToL Manifest Tools')
     .addItem('🔍 Check catalogue for identical manifest', 'checkCatalogue')
-    .addItem('📂 Load from catalogue into row 2', 'loadFromCatalogue')
-    .addItem('🔄 Sync SOP comments to builder headers', 'syncSopCommentsToBuilder')
+    .addItem('📂 Load from catalogue into row 3', 'loadFromCatalogue')
+    .addItem('▶ Generate my manifest', 'generateManifest')
     .addSeparator()
     .addSubMenu(
-      ui.createMenu('Generate manifest + SOP')
-        .addItem('▶ Run generator', 'generateManifest')
+      ui.createMenu('SM Only')
+        .addItem('🔄 Sync SOP comments to builder headers', 'syncSopCommentsToBuilder')
     )
     .addToUi();
 }
