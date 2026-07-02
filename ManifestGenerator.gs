@@ -231,7 +231,9 @@ function isMasterSpreadsheet_() {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN: generateManifest()
-// Orchestrates the full manifest generation pipeline (steps 1–17).
+// Orchestrates the full manifest generation pipeline (steps 2–17 — there is
+// no step 1; it used to rebuild row 3 dropdowns and was removed to stop
+// stripping custom dropdown item colours, see the comment just below).
 // Called from the menu: 📋 ToL Manifest Tools > ▶ Generate my manifest
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -251,8 +253,11 @@ function generateManifest() {
   if (!builder) { alert_(`Sheet "${BUILDER_SHEET_NAME}" not found.`); return; }
   if (!dvSheet)  { alert_(`Sheet "${DATA_VAL_SHEET_NAME}" not found.`); return; }
 
-  // ── Step 1: Apply row 3 dropdowns (fast, harmless every run) ─────────────
-  applyBuilderDropdowns_(builder);
+  // Deliberately does NOT rebuild row 3's data validation here — this
+  // template already inherited working dropdowns from the master when it
+  // was copied, and rebuilding them (via setDataValidation()) would strip
+  // any custom dropdown item colours set up in the sheet UI, since Apps
+  // Script's data validation API can't read or restore those colours.
 
   // ── Step 2: Read & validate project name ─────────────────────────────────
   let projectName = String(builder.getRange(PROJECT_NAME_CELL).getValue() || '').trim();
@@ -783,12 +788,11 @@ function loadFromCatalogue() {
   const builder = ss.getSheetByName(BUILDER_SHEET_NAME);
   if (!builder) { alert_(`Sheet "${BUILDER_SHEET_NAME}" not found.`); return; }
 
-  // Deliberately does NOT call applyBuilderDropdowns_() here — that rebuilds
-  // each cell's data validation rule from scratch, which wipes any custom
-  // dropdown item colours the SM team has set up in the sheet UI (Apps
-  // Script's data validation API can't read or restore those colours).
-  // Instead, validity below is checked against each cell's *existing* live
-  // dropdown list, left completely untouched.
+  // Deliberately does NOT rebuild row 3's data validation here — that would
+  // wipe any custom dropdown item colours the SM team has set up in the
+  // sheet UI (Apps Script's data validation API can't read or restore those
+  // colours). Instead, validity below is checked against each cell's
+  // *existing* live dropdown list, left completely untouched.
 
   const lastCol = builder.getLastColumn();
   const row1    = builder.getRange(ROW_PROJECT_NAME, 1, 1, lastCol).getValues()[0];
@@ -972,35 +976,6 @@ function syncSopCommentsToBuilder() {
       ? `${missing} column(s) had no matching SOP entry — their comments were left unchanged.`
       : `All columns matched.`)
   );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Helper: applyBuilderDropdowns_(builder)
-// Applies the row 3 dropdown validation list to every column in the builder
-// sheet. Columns whose row 5 system requirement is "Mandatory" get the
-// restricted 3-option list; all other columns get the full 5-option list
-// (including the unset placeholder). Runs automatically at the start of
-// generateManifest() so the dropdowns are always up to date.
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function applyBuilderDropdowns_(builder) {
-  const lastCol  = builder.getLastColumn();
-  const row5vals = builder.getRange(ROW_SYSTEM_REQ, 1, 1, lastCol).getValues()[0];
-
-  const mandatoryRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(BUILDER_DROPDOWN_OPTIONS_MANDATORY, true)
-    .setAllowInvalid(false).build();
-
-  const optionalRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(BUILDER_DROPDOWN_OPTIONS_OPTIONAL, true)
-    .setAllowInvalid(false).build();
-
-  for (let col = 2; col <= lastCol; col++) {
-    const sysReq = String(row5vals[col - 1] || '').trim().toLowerCase();
-    const isSysMandatory = sysReq.includes('mandatory');
-    builder.getRange(ROW_SELECTION, col)
-      .setDataValidation(isSysMandatory ? mandatoryRule : optionalRule);
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

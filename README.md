@@ -220,25 +220,26 @@ Because the template is a fully independent copy, the PI only ever needs access 
 
 Running **▶ Generate my manifest** from a PI builder template triggers the generation pipeline (running it from the master manifest itself shows a warning and does nothing — see [Master vs PI Builder Template](#master-vs-pi-builder-template)):
 
-1. **Row 3 dropdowns refreshed** — validation rules applied to all row 3 cells automatically
-2. **Project name validated** — reads cell A2; prompts if blank or still says `"Project Name and Version"`
-3. **Duplicate check** — automatically compares the current row 3 selections against this template's own catalogue. If an identical manifest already exists, a Yes/No dialog warns the PI before proceeding — even if they skipped the manual 🔍 Check catalogue step
-4. **Iteration suffix computed** — if this project name & version already appears in this template's catalogue, an `-N` suffix (`-1`, `-2`, …) is appended so the new run's files, folder, and catalogue row stay distinguishable from earlier ones
-5. **Per-project subfolder resolved** — a subfolder named after the (possibly iterated) project name & version is found or created inside the shared output folder; falls back to the folder root if the subfolder can't be created
-6. **Live SOP fetched** — opens the master SOP Google Doc and parses all bullet-point field descriptions. Generation is cancelled with an error if this fails (see [Error Messages](#error-messages))
-7. **Remaining builder rows read** — rows 4–5 and 7 read
-8. **Data Validation tab read** — dropdown lists loaded for applicable columns
-9. **Column list built** — each column classified as mandatory/optional/hidden_nc/hidden_bespoke based on row 3; unset or unrecognised selections are silently skipped (no blocking). Hidden columns get a `prefillVal` — either `NOT_COLLECTED` or the bespoke value from row 7
-10. **Empty-selection check** — generation only stops if *no* columns at all are selected
-11. **Column ordering applied** — columns with order numbers in row 4 are placed first; remaining columns follow in natural order
-12. **Manifest Google Sheet created** — named `ToL_Manifest_[ProjectName][-N]_[YYYY-MM-DD]`, moved into the per-project subfolder
-13. **Header row written** — colour-coded, bold, text-wrapped, 60px tall, frozen. Hidden columns prefixed `[ignore]`
-14. **Data rows formatted** — 1920 rows with light column tints, grey grid borders, dropdowns, date validation, prefill values for hidden columns, amber missing-value highlight (mandatory columns without a prefill only)
-15. **Hidden columns hidden** — all `hidden_nc`/`hidden_bespoke` columns hidden in the sheet
-16. **Partner SOP tab added** — green tab inside the manifest sheet
-17. **Two SOP Google Docs created** — internal and partner-facing, both moved into the same per-project subfolder
-18. **Catalogue row appended** — new row (with the iteration suffix, if any) added to this template's own catalogue section
-19. **Summary popup shown** — links to all three output files, the output subfolder, and the catalogue row number, plus a note to contact the ToL Sample Management team for review
+1. **Project name validated** — reads cell A2; prompts if blank or still says `"Project Name and Version"`
+2. **Duplicate check** — automatically compares the current row 3 selections against this template's own catalogue. If an identical manifest already exists, a Yes/No dialog warns the PI before proceeding — even if they skipped the manual 🔍 Check catalogue step
+3. **Iteration suffix computed** — if this project name & version already appears in this template's catalogue, an `-N` suffix (`-1`, `-2`, …) is appended so the new run's files, folder, and catalogue row stay distinguishable from earlier ones
+4. **Per-project subfolder resolved** — a subfolder named after the (possibly iterated) project name & version is found or created inside the shared output folder; falls back to the folder root if the subfolder can't be created
+5. **Live SOP fetched** — opens the master SOP Google Doc and parses all bullet-point field descriptions. Generation is cancelled with an error if this fails (see [Error Messages](#error-messages))
+6. **Remaining builder rows read** — rows 4–5 and 7 read
+7. **Data Validation tab read** — dropdown lists loaded for applicable columns
+8. **Column list built** — each column classified as mandatory/optional/hidden_nc/hidden_bespoke based on row 3; unset or unrecognised selections are silently skipped (no blocking). Hidden columns get a `prefillVal` — either `NOT_COLLECTED` or the bespoke value from row 7
+9. **Empty-selection check** — generation only stops if *no* columns at all are selected
+10. **Column ordering applied** — columns with order numbers in row 4 are placed first; remaining columns follow in natural order
+11. **Manifest Google Sheet created** — named `ToL_Manifest_[ProjectName][-N]_[YYYY-MM-DD]`, moved into the per-project subfolder
+12. **Header row written** — colour-coded, bold, text-wrapped, 60px tall, frozen. Hidden columns prefixed `[ignore]`
+13. **Data rows formatted** — 1920 rows with light column tints, grey grid borders, dropdowns, date validation, prefill values for hidden columns, amber missing-value highlight (mandatory columns without a prefill only)
+14. **Hidden columns hidden** — all `hidden_nc`/`hidden_bespoke` columns hidden in the sheet
+15. **Partner SOP tab added** — green tab inside the manifest sheet
+16. **Two SOP Google Docs created** — internal and partner-facing, both moved into the same per-project subfolder
+17. **Catalogue row appended** — new row (with the iteration suffix, if any) added to this template's own catalogue section
+18. **Summary popup shown** — links to all three output files, the output subfolder, and the catalogue row number, plus a note to contact the ToL Sample Management team for review
+
+> **Row 3 dropdowns are never rebuilt automatically.** A template inherits working dropdowns from the master when it's copied, and rebuilding them (e.g. on every generation run) would strip any custom dropdown item colours configured in the sheet UI — Apps Script's data validation API can create a plain list but can't read or restore per-item colours. If you need to change a column's dropdown options, edit its data validation directly (Data → Data validation) on the master, then make new templates from it — existing templates won't pick up the change retroactively.
 
 ---
 
@@ -417,10 +418,12 @@ Per-project subfolders are created automatically underneath `OUTPUT_FOLDER_ID` �
 
 ## Updating Dropdown Options
 
-The row 3 dropdown options are defined in `BUILDER_DROPDOWN_OPTIONS_MANDATORY` (3 options, offered on system-mandatory columns) and `BUILDER_DROPDOWN_OPTIONS_OPTIONAL` (5 options, offered on all other columns). If the wording needs to change:
-1. Update the two arrays in the Constants section
-2. Update the corresponding `SEL_*` trigger constants and the derived `HIDDEN_NC_TRIGGERS`/`HIDDEN_BESPOKE_TRIGGERS`/`ALL_HIDDEN_TRIGGERS` arrays to match the new lowercase versions
-3. Re-run the generator once — the updated dropdowns will be applied to row 3 automatically at the start of the next generation run
+Unlike earlier versions, the script never rebuilds a builder sheet's row 3 dropdowns automatically (doing so would strip any custom dropdown item colours — see the note in [What Gets Generated](#what-gets-generated)). Row 3's actual dropdown lists live entirely in each sheet's own data validation rules, configured directly in the Sheets UI (**Data → Data validation**) on the master; new templates then inherit whatever's there when they're copied.
+
+`BUILDER_DROPDOWN_OPTIONS_MANDATORY`/`BUILDER_DROPDOWN_OPTIONS_OPTIONAL` in the script are only used to recognise the standard wording (e.g. restoring canonical casing in `loadFromCatalogue()`) — they don't drive what appears in any dropdown. If the standard wording changes:
+1. Update the master's row 3 data validation rules directly in the Sheets UI for the affected columns
+2. Update the two arrays in the Constants section, and the corresponding `SEL_*` trigger constants and derived `HIDDEN_NC_TRIGGERS`/`HIDDEN_BESPOKE_TRIGGERS`/`ALL_HIDDEN_TRIGGERS` arrays, to match the new lowercase versions
+3. Existing templates keep whatever dropdown wording they already had — only templates created after both changes will reflect the new wording
 
 ---
 
@@ -434,6 +437,7 @@ This script is maintained by the Tree of Life Sample Management team at the Well
 
 | Version | Date | Notes |
 |---------|------|-------|
+| 0.13 | 2026-07 | Removed the automatic row 3 dropdown rebuild (`applyBuilderDropdowns_()`) that used to run at the start of every `generateManifest()` — it was silently stripping custom dropdown item colours on every single generation, since Apps Script's data validation API can build a plain list but can't read or restore per-item colours. Templates now rely entirely on the dropdowns they inherited from the master at copy-time; the removed function also had a latent bug where it would have overwritten the single-option "must stay visible" column dropdowns (B:I) with the generic 3-option list |
 | 0.12 | 2026-07 | Split into a master/PI-template architecture: the master manifest now shows an "SM Only" menu (Create New Builder Template for a PI, Sync SOP comments) instead of ToL Manifest Tools, so the generator can never be run from it. "Create New Builder Template for a PI" makes a full, standalone Drive copy of the master (bound script included) into the shared output folder; that copy shows "📋 ToL Manifest Tools" (Check catalogue, Load from catalogue, Generate my manifest) and works entirely on its own — its own column selections, its own Manifest Catalogue, nothing shared with the master or any other template. New `MASTER_SPREADSHEET_ID` constant (required one-time setup) is how `isMasterSpreadsheet_()` tells the master apart from a template copy. `generateManifest()`/`checkCatalogue()`/`loadFromCatalogue()` now refuse to run from the master itself, and `createBuilderTemplate()`/`syncSopCommentsToBuilder()` refuse to run from a template |
 | 0.11 | 2026-07 | Builder sheet rows shifted by one (new unused label row 1) plus an extra Notes row 8 — all row constants updated (selections now row 3, catalogue now starts row 14); output files now saved into a per-project subfolder (named by project & version) inside the shared folder; regenerating the same project name & version now appends an `-N` iteration suffix to the catalogue row and output filenames; removed the "pending SM team review" cell note; summary popup now points PIs to `treeoflifesamples@sanger.ac.uk` instead of asking them to copy the row to a master catalogue; new shared output folder ID; menu reorganised — Generate is back at the top level as "Generate my manifest", Sync SOP comments moved into a new "SM Only" submenu |
 | 0.10 | 2026-06 | New colour palette: forest green mandatory headers, very light blue/dark blue text optional headers; mandatory/optional data cells now plain white (no tint); missing-mandatory highlight changed from amber to light green |
