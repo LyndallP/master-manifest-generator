@@ -6,7 +6,7 @@
  *
  * WHAT IT GENERATES (per run):
  *   1. A new Google Sheets manifest file — tab named "Metadata Entry",
- *      with 96 data rows, colour-coded headers, dropdowns, and date
+ *      with 1920 data rows, colour-coded headers, dropdowns, and date
  *      validation. Saved to the shared output folder in Google Drive.
  *   2. An internal SOP Google Doc — all columns listed, hidden columns
  *      marked [HIDDEN] and greyed. Saved to the shared output folder.
@@ -25,17 +25,33 @@
  *
  * BUILDER SHEET STRUCTURE (all_manifest_builder_v1.0):
  *   Row 1 — Column names  |  Col A = project name & version
- *   Row 2 — Project selections (dropdown per column):
- *             "Include and visible (mandatory)"  → green header
- *             "Include, visible and mandatory"   → green header
- *             "Include, visible and optional"    → light blue header
- *             "Include and hidden"               → white header, hidden,
- *                                                  prefixed [ignore]
- *             "Exclude"                          → not included
+ *   Row 2 — Project selections (dropdown per column). The dropdown list
+ *           offered depends on row 4 (system-mandatory columns get a
+ *           restricted 3-option list; all others get the full 5-option
+ *           list, including the unset placeholder):
+ *             "Mandatory, visible"                  → mandatory header
+ *             "Optional, visible"                   → optional header
+ *             "Mandatory/Include, hide, use NOT_COLLECTED"
+ *                                                    → hidden column,
+ *                                                      every data row
+ *                                                      pre-filled with
+ *                                                      NOT_COLLECTED
+ *             "Mandatory/Include, hide, use bespoke term"
+ *                                                    → hidden column,
+ *                                                      every data row
+ *                                                      pre-filled with the
+ *                                                      value from row 6
+ *             "select option" / blank                → unset — silently
+ *                                                       excluded from the
+ *                                                       manifest (no error)
+ *           There is no "Exclude" option in the UI — leaving a column
+ *           unset has the same effect.
  *   Row 3 — Column order numbers (optional; blank = keep natural order)
- *   Row 4 — System requirements (Mandatory/Optional) — used as fallback
- *            when row 2 says plain "Include and visible" with no nuance
+ *   Row 4 — System requirements (Mandatory/Optional) — determines which
+ *            row 2 dropdown list a column gets
  *   Row 5 — Manifest requirements (reference only, not used by script)
+ *   Row 6 — Bespoke autopopulate values — read by the script to pre-fill
+ *            hidden columns whose row 2 selection is "...use bespoke term"
  *   Rows 12+ — ToL Manifest Catalogue (one row per past manifest)
  *
  * CONFIGURATION (edit the constants below):
@@ -62,14 +78,15 @@
 const BUILDER_SHEET_NAME  = 'all_manifest_builder_v1.0';
 const DATA_VAL_SHEET_NAME = 'Data Validation';
 const MANIFEST_TAB_NAME   = 'Metadata Entry';
-const MANIFEST_DATA_ROWS  = 96;
+const MANIFEST_DATA_ROWS  = 1920;
 
 // Builder sheet row numbers
-const ROW_PROJECT_NAME = 1;   // Col A: project name & version
-const ROW_SELECTION    = 2;   // Include/exclude/hidden choices
-const ROW_COL_ORDER    = 3;   // Optional column ordering numbers
-const ROW_SYSTEM_REQ   = 4;   // System requirements (Mandatory/Optional)
-// Row 5 = Manifest requirements (reference only, not used for colouring)
+const ROW_PROJECT_NAME  = 1;   // Col A: project name & version
+const ROW_SELECTION     = 2;   // Include/exclude/hidden choices
+const ROW_COL_ORDER     = 3;   // Optional column ordering numbers
+const ROW_SYSTEM_REQ    = 4;   // System requirements (Mandatory/Optional)
+const ROW_MANIFEST_REQ  = 5;   // Manifest requirements (reference only)
+const ROW_BESPOKE       = 6;   // Bespoke autopopulate values for hidden columns
 
 // Catalogue section
 const CATALOGUE_HEADER_ROW = 11;  // "Manifest names and versions"
@@ -86,53 +103,65 @@ const SOP_DOC_ID = '10WMIZ9GuB0hj5pBzFkz1U2V3_KwIFH-3cAud6h3-Gow';
 
 // Shared output folder — all generated files are moved here after creation.
 // To change: replace the ID with the new folder ID from the Drive URL.
-// Current: https://drive.google.com/drive/folders/1pHO9F18QAF96UQjpNUN23L7WUX1XNFfc
-const OUTPUT_FOLDER_ID = '1pHO9F18QAF96UQjpNUN23L7WUX1XNFfc';
+// Current: https://drive.google.com/drive/folders/1tnQ7ciifegXd_4HUPcZ4me4kdBtRxnii
+const OUTPUT_FOLDER_ID = '1tnQ7ciifegXd_4HUPcZ4me4kdBtRxnii';
 
 // ─── Colours ──────────────────────────────────────────────────────────────────
 // Single source of truth — changing these updates both sheet headers and SOP highlights.
-// Palette: deep teal/sage family for biodiversity genomics manifests.
-// Dark = must fill | Light = supplementary | Amber = missing required | Coral = error
+// Palette: forest green / light blue family for biodiversity genomics manifests.
+// Dark = must fill | Light = supplementary | Light green = missing required | Coral = error
 // Avoids red/green error/success semantics; accessible for colourblind users.
 
-const COLOUR_MANDATORY        = '#355C4B';  // Deep forest teal  — mandatory headers (dark)
-const COLOUR_MANDATORY_CELL   = '#F5F8F6';  // Very pale moss    — mandatory data cells
-const COLOUR_OPTIONAL         = '#355C4B';  // (same family — see COLOUR_OPTIONAL_LIGHT)
-const COLOUR_OPTIONAL_LIGHT   = '#C8DDD3';  // Soft sage         — optional headers (light)
-const COLOUR_OPTIONAL_CELL    = '#F5F8F6';  // Very pale moss    — optional data cells
+const COLOUR_MANDATORY        = '#2E6F40';  // Forest green      — mandatory headers (dark)
+const COLOUR_MANDATORY_CELL   = '#FFFFFF';  // White             — mandatory data cells (no tint)
+const COLOUR_OPTIONAL         = '#2E6F40';  // (same family — see COLOUR_OPTIONAL_LIGHT)
+const COLOUR_OPTIONAL_LIGHT   = '#DCEEFB';  // Very light blue   — optional headers (light)
+const COLOUR_OPTIONAL_CELL    = '#FFFFFF';  // White             — optional data cells (no tint)
 const COLOUR_HIDDEN_BG        = '#FFFFFF';  // White             — hidden column headers
 const COLOUR_HIDDEN_CELL      = '#FAFBF9';  // Off-white         — hidden data cells
 const COLOUR_HEADER_TEXT_DARK = '#FFFFFF';  // White             — text on dark (mandatory) headers
-const COLOUR_HEADER_TEXT_LIGHT= '#1E2A24';  // Dark charcoal     — text on light (optional/hidden) headers
+const COLOUR_HEADER_TEXT_LIGHT= '#1E2A24';  // Dark charcoal     — text on light (hidden) headers
+const COLOUR_HEADER_TEXT_BLUE = '#003366';  // Dark blue         — text on optional (light blue) headers
 const COLOUR_HEADER_TEXT      = '#1E2A24';  // Dark charcoal     — default (backwards compat)
 const COLOUR_GRID_LINE        = '#CCCCCC';  // Grey              — cell borders
-const COLOUR_MISSING_REQUIRED = '#F3D27A';  // Soft amber        — blank mandatory cell
+const COLOUR_MISSING_REQUIRED = '#C8E6C9';  // Light green       — blank mandatory cell
 const COLOUR_DATE_ERROR       = '#D97C6C';  // Muted coral       — date format error
 const COLOUR_ROW_ALT          = '#EEF2EF';  // Pale moss-grey    — alternating row stripe
 const COLOUR_EXCLUDED_CELL    = '#EFEFEF';  // Light grey        — excluded columns in catalogue row
 
 // ─── Row 2 selection values → behaviour ──────────────────────────────────────
-// Mandatory (deep teal header) triggers — any of these in row 2 → teal/mandatory
-const ORANGE_TRIGGERS = [
-  'include and visible (mandatory)',
-  'include, visible and mandatory',
-  'include and visible'          // plain visible → green/mandatory if row 4 is Mandatory, else blue/optional
+// Two sets: mandatory cols get a restricted set; optional cols get the full set.
+// No 'Exclude' option — unset/blank = excluded silently.
+const BUILDER_DROPDOWN_OPTIONS_MANDATORY = [
+  'Mandatory, visible',
+  'Mandatory, hide, use NOT_COLLECTED',
+  'Mandatory, hide, use a bespoke term'
 ];
-// Soft sage (optional) trigger
-const BLUE_TRIGGER = 'include, visible and optional';
-// Hidden trigger
-const HIDDEN_TRIGGER = 'include and hidden';
-// Exclude trigger
-const EXCLUDE_TRIGGER = 'exclude';
-
-// ─── Dropdown options for row 2 ───────────────────────────────────────────────
+const BUILDER_DROPDOWN_OPTIONS_OPTIONAL = [
+  'select option',
+  'Mandatory, visible',
+  'Optional, visible',
+  'Include, hide, use NOT_COLLECTED',
+  'Include, hide, use bespoke term'
+];
+// Legacy — used by loadFromCatalogue to restore canonical casing
 const BUILDER_DROPDOWN_OPTIONS = [
-  'Include and visible (mandatory)',
-  'Include, visible and mandatory',
-  'Include, visible and optional',
-  'Include and hidden',
-  'Exclude'
+  ...BUILDER_DROPDOWN_OPTIONS_MANDATORY,
+  ...BUILDER_DROPDOWN_OPTIONS_OPTIONAL
 ];
+
+const SEL_MANDATORY_VISIBLE      = 'mandatory, visible';
+const SEL_OPTIONAL_VISIBLE       = 'optional, visible';
+const SEL_MANDATORY_HIDE_NC      = 'mandatory, hide, use not_collected';
+const SEL_INCLUDE_HIDE_NC        = 'include, hide, use not_collected';
+const SEL_MANDATORY_HIDE_BESPOKE = 'mandatory, hide, use a bespoke term';
+const SEL_INCLUDE_HIDE_BESPOKE   = 'include, hide, use bespoke term';
+const SEL_EXCLUDE                = 'exclude';  // backwards compat only — not a UI option
+const SEL_UNSET                  = 'select option';
+
+const HIDDEN_NC_TRIGGERS      = [SEL_MANDATORY_HIDE_NC, SEL_INCLUDE_HIDE_NC];
+const HIDDEN_BESPOKE_TRIGGERS = [SEL_MANDATORY_HIDE_BESPOKE, SEL_INCLUDE_HIDE_BESPOKE];
+const ALL_HIDDEN_TRIGGERS     = [...HIDDEN_NC_TRIGGERS, ...HIDDEN_BESPOKE_TRIGGERS];
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN: generateManifest()
@@ -206,12 +235,12 @@ function generateManifest() {
   // ── Step 5: Read remaining builder rows ───────────────────────────────────
   const row3     = builder.getRange(ROW_COL_ORDER,  1, 1, lastCol).getValues()[0];
   const row4     = builder.getRange(ROW_SYSTEM_REQ, 1, 1, lastCol).getValues()[0];
+  const row6     = builder.getRange(ROW_BESPOKE,    1, 1, lastCol).getValues()[0];
 
   // ── Step 6: Read Data Validation tab ─────────────────────────────────────
   const dvMap = readDataValidationMap_(dvSheet);
 
   // ── Step 7: Build column list ─────────────────────────────────────────────
-  const missingCols = [];
   const rawColumns  = [];   // before reordering
 
   for (let col = 2; col <= lastCol; col++) {   // col 1 is the label column
@@ -221,35 +250,23 @@ function generateManifest() {
     const rawSel  = String(row2[col - 1] || '').trim();
     const selNorm = rawSel.toLowerCase();
 
-    // Skip unset
-    if (!rawSel || selNorm === 'select option') {
-      missingCols.push(`"${colName}" (col ${col})`);
-      continue;
-    }
+    // Unset/blank/select option → silently excluded
+    if (!rawSel || selNorm === SEL_UNSET || selNorm === SEL_EXCLUDE) continue;
 
     // Determine inclusion type
-    let inclusion;  // 'green' | 'blue' | 'hidden' | 'exclude'
-    if (selNorm === EXCLUDE_TRIGGER) {
-      inclusion = 'exclude';
-    } else if (selNorm === HIDDEN_TRIGGER) {
-      inclusion = 'hidden';
-    } else if (selNorm === BLUE_TRIGGER) {
-      inclusion = 'blue';
-    } else if (ORANGE_TRIGGERS.includes(selNorm)) {
-      // Plain "include and visible" → check row 4 system req
-      if (selNorm === 'include and visible') {
-        const sysReq = String(row4[col - 1] || '').trim().toLowerCase();
-        // 'mandatory' and 'wospi mandatory' both → green/mandatory
-        inclusion = (sysReq.startsWith('mandatory') || sysReq.includes('mandatory')) ? 'orange' : 'blue';  // 'orange' = green in the UI — internal label kept for compatibility
-      } else {
-        inclusion = 'orange';  // rendered as green in the manifest
-      }
-    } else {
-      missingCols.push(`"${colName}" (col ${col}) — unrecognised: "${rawSel}"`);
-      continue;
-    }
+    let inclusion;  // 'mandatory' | 'optional' | 'hidden_nc' | 'hidden_bespoke'
+    if (HIDDEN_NC_TRIGGERS.includes(selNorm))           inclusion = 'hidden_nc';
+    else if (HIDDEN_BESPOKE_TRIGGERS.includes(selNorm)) inclusion = 'hidden_bespoke';
+    else if (selNorm === SEL_OPTIONAL_VISIBLE)          inclusion = 'optional';
+    else if (selNorm === SEL_MANDATORY_VISIBLE)         inclusion = 'mandatory';
+    else continue;  // unrecognised — skip silently
 
-    if (inclusion === 'exclude') continue;
+    const isHidden    = inclusion === 'hidden_nc' || inclusion === 'hidden_bespoke';
+    const isMandatory = inclusion === 'mandatory' || isHidden;
+    const bespokeVal  = inclusion === 'hidden_bespoke'
+      ? String(row6[col - 1] || '').trim() : null;
+    const prefillVal  = inclusion === 'hidden_nc' ? 'NOT_COLLECTED'
+                      : inclusion === 'hidden_bespoke' ? bespokeVal : null;
 
     // Column order number from row 3 (blank = null = keep natural order)
     const orderVal = row3[col - 1];
@@ -257,11 +274,12 @@ function generateManifest() {
       ? Number(orderVal) : null;
 
     rawColumns.push({
-      name:       colName,
-      inclusion,                              // 'orange' (=green) | 'blue' | 'hidden'
-      isMandatory: inclusion === 'orange',    // 'orange' is the internal label; colour is green
-      isHidden:    inclusion === 'hidden',
-      isOptional:  inclusion === 'blue',
+      name:        colName,
+      inclusion,
+      isMandatory,
+      isHidden,
+      isOptional:  inclusion === 'optional',
+      prefillVal,
       dvValues:    dvMap[colName] || null,
       sopComment:  sopComments[colName] || null,
       orderNum,
@@ -269,14 +287,11 @@ function generateManifest() {
     });
   }
 
-  // ── Step 8: Block on missing selections ───────────────────────────────────
-  if (missingCols.length > 0) {
-    const list = missingCols.slice(0, 20).join('\n  • ');
-    const more = missingCols.length > 20 ? `\n  …and ${missingCols.length - 20} more.` : '';
-    alert_(`⚠️ Please fill in row 2 for these columns before generating:\n\n  • ${list}${more}\n\nUse the dropdowns provided.`);
+  // ── Step 8: Require at least one selected column ─────────────────────────
+  if (rawColumns.length === 0) {
+    alert_('No columns are selected in row 2. Please choose an option for at least one column.');
     return;
   }
-  if (rawColumns.length === 0) { alert_('No columns selected. Please update row 2.'); return; }
 
   // ── Step 9: Apply column ordering from row 3 ─────────────────────────────
   // Columns with an order number sort by that number first;
@@ -335,8 +350,12 @@ function generateManifest() {
     }
 
     manifest.getRange(1, colNum).setBackground(headerBg);
-    // Dark headers (mandatory) get white text; light headers (optional/hidden) get charcoal
-    const headerTextColour = col.isMandatory ? COLOUR_HEADER_TEXT_DARK : COLOUR_HEADER_TEXT_LIGHT;
+    // Forest green (mandatory, visible) headers get white text; light blue (optional)
+    // headers get dark blue text; white (hidden) headers get charcoal text
+    let headerTextColour;
+    if (col.isHidden)         headerTextColour = COLOUR_HEADER_TEXT_LIGHT;
+    else if (col.isMandatory) headerTextColour = COLOUR_HEADER_TEXT_DARK;
+    else                      headerTextColour = COLOUR_HEADER_TEXT_BLUE;
     manifest.getRange(1, colNum).setFontColor(headerTextColour);
     if (col.sopComment) manifest.getRange(1, colNum).setComment(col.sopComment);
 
@@ -367,8 +386,24 @@ function generateManifest() {
       applyDateFormatting_(manifest, colNum, dataStart, dataEnd);
     }
 
+    // Pre-fill hidden columns with NOT_COLLECTED or bespoke value from row 6
+    if (col.prefillVal !== null && col.prefillVal !== '') {
+      const prefillRange = manifest.getRange(dataStart, colNum, MANIFEST_DATA_ROWS, 1);
+      prefillRange.setValues(Array(MANIFEST_DATA_ROWS).fill([col.prefillVal]));
+    } else if (col.inclusion === 'hidden_bespoke') {
+      // Bespoke selected but row 6 is empty — warn via header cell comment
+      const existing = manifest.getRange(1, colNum).getComment()
+        ? manifest.getRange(1, colNum).getComment().getText() + '\n\n' : '';
+      manifest.getRange(1, colNum).setComment(
+        existing +
+        '⚠️ Bespoke term selected in row 2 but no value found in row 6 of the builder sheet. ' +
+        'Please populate this column manually or add the term to row 6 and regenerate.'
+      );
+    }
+
     // Missing mandatory value: amber highlight if mandatory column cell is blank
-    if (col.isMandatory) {
+    // and not already pre-filled
+    if (col.isMandatory && !col.prefillVal) {
       applyMissingMandatoryHighlight_(manifest, colNum, dataStart, dataEnd);
     }
   });
@@ -431,7 +466,7 @@ function findExactCatalogueMatches_(builder, lastCol, row1, row2) {
     if (!colName) continue;
     const sel     = String(row2[col - 1] || '').trim();
     const selNorm = sel.toLowerCase();
-    if (sel && selNorm !== 'select option' && selNorm !== EXCLUDE_TRIGGER) {
+    if (sel && selNorm !== SEL_UNSET && selNorm !== SEL_EXCLUDE) {
       currentFull.set(colName, selNorm);
     }
   }
@@ -455,7 +490,7 @@ function findExactCatalogueMatches_(builder, lastCol, row1, row2) {
       if (!colName) continue;
       const val = catRow[col - 1];
       let selStr = '';
-      if (val === true)                                           selStr = 'include and visible (mandatory)';
+      if (val === true)                                           selStr = SEL_MANDATORY_VISIBLE;
       else if (typeof val === 'string' && val.trim().length > 0) selStr = val.trim().toLowerCase();
       if (selStr) catFull.set(colName, selStr);
     }
@@ -497,7 +532,7 @@ function checkCatalogue() {
     if (!colName) continue;
     const sel     = String(row2[col - 1] || '').trim();
     const selNorm = sel.toLowerCase();
-    if (sel && selNorm !== 'select option' && selNorm !== EXCLUDE_TRIGGER) {
+    if (sel && selNorm !== SEL_UNSET && selNorm !== SEL_EXCLUDE) {
       currentCols.add(colName);
       currentFull.set(colName, selNorm);
     }
@@ -531,7 +566,7 @@ function checkCatalogue() {
       const val     = catRow[col - 1];
       // Support both old TRUE/FALSE checkboxes and new full-string storage
       let selStr = '';
-      if (val === true)                                            selStr = 'include and visible (mandatory)';
+      if (val === true)                                            selStr = SEL_MANDATORY_VISIBLE;
       else if (typeof val === 'string' && val.trim().length > 0)  selStr = val.trim().toLowerCase();
       // false / blank / null = excluded
 
@@ -630,12 +665,12 @@ function loadFromCatalogue() {
     for (let col = 2; col <= lastCol; col++) {
       const val     = catRow[col - 1];
       let   selStr  = '';
-      if (val === true)                                           selStr = 'include and visible (mandatory)';
+      if (val === true)                                           selStr = SEL_MANDATORY_VISIBLE;
       else if (typeof val === 'string' && val.trim().length > 0) selStr = val.trim().toLowerCase();
       if (!selStr) continue;
 
-      if (selStr.includes('hidden'))                              hidden++;
-      else if (selStr.includes('optional'))                       optional++;
+      if (ALL_HIDDEN_TRIGGERS.includes(selStr))                   hidden++;
+      else if (selStr === SEL_OPTIONAL_VISIBLE)                   optional++;
       else                                                        mandatory++;
     }
 
@@ -673,8 +708,8 @@ function loadFromCatalogue() {
   // ── Write selections back into row 2 ─────────────────────────────────────
   // For each column in the catalogue entry:
   //   • Full selection string → write directly into row 2
-  //   • Old TRUE checkbox     → map to "Include and visible (mandatory)"
-  //   • Empty / FALSE         → write "Exclude"
+  //   • Old TRUE checkbox     → map to "Mandatory, visible"
+  //   • Empty / FALSE         → write "select option" (unset)
   // Columns that don't appear in the catalogue (new columns added since) are left as-is.
   let written = 0;
   for (let col = 2; col <= lastCol; col++) {
@@ -682,7 +717,7 @@ function loadFromCatalogue() {
     let   newSel = '';
 
     if (val === true) {
-      newSel = 'Include and visible (mandatory)';
+      newSel = 'Mandatory, visible';
     } else if (typeof val === 'string' && val.trim().length > 0) {
       // Restore original casing from BUILDER_DROPDOWN_OPTIONS if possible
       const stored   = val.trim();
@@ -691,7 +726,7 @@ function loadFromCatalogue() {
       );
       newSel = matched || stored;  // use canonical casing if found
     } else {
-      newSel = 'Exclude';
+      newSel = 'select option';
     }
 
     builder.getRange(ROW_SELECTION, col).setValue(newSel);
@@ -760,20 +795,30 @@ function syncSopCommentsToBuilder() {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helper: applyBuilderDropdowns_(builder)
-// Applies the five-option dropdown validation list to every column in row 2
-// of the builder sheet. Runs automatically at the start of generateManifest()
-// so the dropdowns are always up to date without a separate setup step.
+// Applies the row 2 dropdown validation list to every column in the builder
+// sheet. Columns whose row 4 system requirement is "Mandatory" get the
+// restricted 3-option list; all other columns get the full 5-option list
+// (including the unset placeholder). Runs automatically at the start of
+// generateManifest() so the dropdowns are always up to date.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function applyBuilderDropdowns_(builder) {
-  const lastCol = builder.getLastColumn();
-  const rule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(BUILDER_DROPDOWN_OPTIONS, true)
-    .setAllowInvalid(false)
-    .build();
-  // Apply to all data columns in row 2 (skip col 1 which is the label)
+  const lastCol  = builder.getLastColumn();
+  const row4vals = builder.getRange(ROW_SYSTEM_REQ, 1, 1, lastCol).getValues()[0];
+
+  const mandatoryRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(BUILDER_DROPDOWN_OPTIONS_MANDATORY, true)
+    .setAllowInvalid(false).build();
+
+  const optionalRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(BUILDER_DROPDOWN_OPTIONS_OPTIONAL, true)
+    .setAllowInvalid(false).build();
+
   for (let col = 2; col <= lastCol; col++) {
-    builder.getRange(ROW_SELECTION, col).setDataValidation(rule);
+    const sysReq = String(row4vals[col - 1] || '').trim().toLowerCase();
+    const isSysMandatory = sysReq.includes('mandatory');
+    builder.getRange(ROW_SELECTION, col)
+      .setDataValidation(isSysMandatory ? mandatoryRule : optionalRule);
   }
 }
 
@@ -822,7 +867,7 @@ function applyDateFormatting_(sheet, colNum, startRow, endRow) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helper: applyMissingMandatoryHighlight_(sheet, colNum, startRow, endRow)
 // Applies a conditional formatting rule to mandatory columns: if a cell is
-// blank, it is highlighted with soft amber (#F3D27A) to guide data curators.
+// blank, it is highlighted light green (#C8E6C9) to guide data curators.
 // This is the single most useful validation cue in a large manifest — it makes
 // missing required values immediately visible without being alarming.
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1091,8 +1136,8 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
   });
 
   // Colour constants linked to sheet header colours
-  const COL_MANDATORY = COLOUR_MANDATORY;   // '#355C4B' deep forest teal — links to manifest header colour
-  const COL_OPTIONAL  = COLOUR_OPTIONAL_LIGHT;  // '#C8DDD3' soft sage
+  const COL_MANDATORY = COLOUR_MANDATORY;       // forest green — links to manifest header colour
+  const COL_OPTIONAL  = COLOUR_OPTIONAL_LIGHT;  // very light blue
 
   const sopColumns = partnerFacing
     ? columns.filter(col => !col.isHidden)
@@ -1246,10 +1291,10 @@ function createSopDoc_(baseName, columns, today, sopComments, projectName, partn
  * Format of the new row:
  *   Col A  = project name, bold, yellow background, with a cell note
  *            flagging it as pending SM team review.
- *   Col B+ = full selection string for included columns (e.g. "Include,
- *            visible and mandatory"), empty string for excluded/unset.
+ *   Col B+ = full selection string for included columns (e.g. "Mandatory,
+ *            visible"), empty string for excluded/unset.
  *            Each cell is colour-coded to match the manifest headers:
- *            teal (mandatory), sage (optional), white (hidden),
+ *            forest green (mandatory), light blue (optional), white (hidden),
  *            light grey (excluded).
  *
  * Row formatting: font size 8, text wrap, solid border around the full row.
@@ -1288,7 +1333,7 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   for (let col = 2; col <= lastCol; col++) {
     const sel     = String(row2[col - 1] || '').trim();
     const selNorm = sel.toLowerCase();
-    const isIncluded = sel && selNorm !== 'select option' && selNorm !== EXCLUDE_TRIGGER;
+    const isIncluded = sel && selNorm !== SEL_UNSET && selNorm !== SEL_EXCLUDE;
     rowValues[col - 1] = isIncluded ? sel : '';  // store original casing
   }
 
@@ -1312,10 +1357,10 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
   );
 
   // Cols B onward: colour-coded to match the manifest header colours
-  //   Teal       = mandatory → white text
-  //   Sage       = optional  → charcoal text
-  //   White      = hidden    → charcoal text
-  //   Light grey = excluded  → charcoal text
+  //   Forest green = mandatory → white text
+  //   Light blue   = optional  → charcoal text
+  //   White        = hidden    → charcoal text
+  //   Light grey   = excluded  → charcoal text
   for (let col = 2; col <= lastCol; col++) {
     const val  = rowValues[col - 1];
     const cell = builder.getRange(insertRow, col);
@@ -1325,9 +1370,9 @@ function appendCatalogueRow_(builder, projectName, columns, lastCol, row1, row2)
     }
     const selNorm = String(val).toLowerCase();
     let bg, fg;
-    if      (selNorm.includes('hidden'))   { bg = COLOUR_HIDDEN_BG;     fg = COLOUR_HEADER_TEXT_LIGHT; }
-    else if (selNorm.includes('optional')) { bg = COLOUR_OPTIONAL_LIGHT; fg = COLOUR_HEADER_TEXT_LIGHT; }
-    else                                   { bg = COLOUR_MANDATORY;      fg = COLOUR_HEADER_TEXT_DARK;  }
+    if      (ALL_HIDDEN_TRIGGERS.includes(selNorm)) { bg = COLOUR_HIDDEN_BG;      fg = COLOUR_HEADER_TEXT_LIGHT; }
+    else if (selNorm === SEL_OPTIONAL_VISIBLE)      { bg = COLOUR_OPTIONAL_LIGHT; fg = COLOUR_HEADER_TEXT_LIGHT; }
+    else                                             { bg = COLOUR_MANDATORY;      fg = COLOUR_HEADER_TEXT_DARK;  }
     cell.setBackground(bg).setFontColor(fg);
   }
 

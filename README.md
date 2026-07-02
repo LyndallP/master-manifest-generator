@@ -8,7 +8,7 @@ A Google Apps Script tool for generating tailored sample metadata manifests and 
 
 The Manifest Generator reads a configuration Google Sheet (`all_manifest_builder_v1.0`) where a project investigator (PI) or sample manager selects which metadata fields to include in a project-specific manifest. On generation, the script produces:
 
-1. **A Google Sheets manifest file** — pre-formatted with colour-coded headers, dropdown validation, date format checking, and 96 blank data-entry rows ready for partner use
+1. **A Google Sheets manifest file** — pre-formatted with colour-coded headers, dropdown validation, date format checking, and 1920 blank data-entry rows ready for partner use
 2. **An internal SOP Google Doc** — full column-by-column instructions for all fields including hidden ones (marked `[HIDDEN]`)
 3. **A partner-facing SOP Google Doc** — instructions for visible fields only, with a note about hidden columns
 4. **A Partner SOP tab** inside the generated manifest Google Sheet
@@ -76,35 +76,36 @@ const SOP_DOC_ID = '10WMIZ9GuB0hj5pBzFkz1U2V3_KwIFH-3cAud6h3-Gow';
 
 // Google Drive folder ID for all output files
 // Extract from the folder URL: drive.google.com/drive/folders/[FOLDER_ID]
-const OUTPUT_FOLDER_ID = '1pHO9F18QAF96UQjpNUN23L7WUX1XNFfc';
+const OUTPUT_FOLDER_ID = '1tnQ7ciifegXd_4HUPcZ4me4kdBtRxnii';
 
 // First data row of the catalogue section in the builder sheet
 const CATALOGUE_DATA_START = 12;
 
 // Number of blank data rows to generate in the manifest
-const MANIFEST_DATA_ROWS = 96;
+const MANIFEST_DATA_ROWS = 1920;
 ```
 
 ### Colour scheme
 Colours are defined as a single source of truth — changing them here updates both the manifest sheet headers and the SOP document field name highlights:
 
 ```javascript
-const COLOUR_MANDATORY        = '#355C4B';  // Deep forest teal  — mandatory headers (white text)
-const COLOUR_MANDATORY_CELL   = '#F5F8F6';  // Very pale moss    — mandatory data cell backgrounds
-const COLOUR_OPTIONAL_LIGHT   = '#C8DDD3';  // Soft sage         — optional headers (charcoal text)
-const COLOUR_OPTIONAL_CELL    = '#F5F8F6';  // Very pale moss    — optional data cell backgrounds
+const COLOUR_MANDATORY        = '#2E6F40';  // Forest green      — mandatory headers (white text)
+const COLOUR_MANDATORY_CELL   = '#FFFFFF';  // White             — mandatory data cell backgrounds (no tint)
+const COLOUR_OPTIONAL_LIGHT   = '#DCEEFB';  // Very light blue   — optional headers (dark blue text)
+const COLOUR_OPTIONAL_CELL    = '#FFFFFF';  // White             — optional data cell backgrounds (no tint)
 const COLOUR_HIDDEN_BG        = '#FFFFFF';  // White             — hidden column headers
 const COLOUR_HIDDEN_CELL      = '#FAFBF9';  // Off-white         — hidden data cell backgrounds
 const COLOUR_HEADER_TEXT_DARK = '#FFFFFF';  // White             — text on mandatory headers
-const COLOUR_HEADER_TEXT_LIGHT= '#1E2A24';  // Dark charcoal     — text on optional/hidden headers
+const COLOUR_HEADER_TEXT_LIGHT= '#1E2A24';  // Dark charcoal     — text on hidden headers
+const COLOUR_HEADER_TEXT_BLUE = '#003366';  // Dark blue         — text on optional headers
 const COLOUR_GRID_LINE        = '#CCCCCC';  // Grey              — cell borders
-const COLOUR_MISSING_REQUIRED = '#F3D27A';  // Soft amber        — blank mandatory cell highlight
+const COLOUR_MISSING_REQUIRED = '#C8E6C9';  // Light green       — blank mandatory cell highlight
 const COLOUR_DATE_ERROR       = '#D97C6C';  // Muted coral       — date format validation error
 const COLOUR_ROW_ALT          = '#EEF2EF';  // Pale moss-grey    — alternating row stripe
 const COLOUR_EXCLUDED_CELL    = '#EFEFEF';  // Light grey        — excluded columns in catalogue row
 ```
 
-> **Palette rationale:** The deep teal/sage family was chosen specifically for biodiversity genomics manifests. It avoids red/green error/success semantics, is accessible for colourblind users, and the dark/light hierarchy (dark = must fill, light = supplementary) is more intuitive than arbitrary colour differences. The palette subtly evokes field ecology and natural history collections.
+> **Palette rationale:** Forest green for mandatory headers and light blue (with dark blue text) for optional headers were chosen specifically for biodiversity genomics manifests. It avoids red/green error/success semantics, is accessible for colourblind users, and the dark/light hierarchy (dark = must fill, light = supplementary) is more intuitive than arbitrary colour differences.
 
 ---
 
@@ -115,11 +116,11 @@ The `all_manifest_builder_v1.0` sheet is laid out as follows:
 | Row | Label (col A) | Purpose |
 |-----|---------------|---------|
 | 1 | Project Name and Version | **Col A:** Project name used in all filenames and SOP text. Must be filled in before generating (e.g. `DToL_Bats_v1.0`). **Cols B+:** Column field names |
-| 2 | REQUIREMENT FOR NEW PROJECT MANIFEST | Project-level selection for each column — choose from the dropdown in each cell (see [Row 2 Dropdown Options](#row-2-dropdown-options)) |
+| 2 | REQUIREMENT FOR NEW PROJECT MANIFEST | Project-level selection for each column — choose from the dropdown in each cell (see [Row 2 Dropdown Options](#row-2-dropdown-options)). The dropdown offered depends on row 4: system-mandatory columns get a restricted 3-option list, all others get the full 5-option list |
 | 3 | Column order | Optional integer ordering numbers. Columns with numbers are placed first in that order; blank columns follow in their natural left-to-right order |
-| 4 | System requirements | `Mandatory`, `Optional`, or `WOSPI Mandatory` — system-level requirement used as a fallback when row 2 says plain `Include and visible` |
+| 4 | System requirements | `Mandatory`, `Optional`, or `WOSPI Mandatory` — determines which row 2 dropdown list a column gets |
 | 5 | Manifest requirements | Reference only — not read by the script |
-| 6 | For hidden fields, what and how populate? | SM team reference only — not read by the script |
+| 6 | Bespoke autopopulate value | **Read by the script.** For hidden columns whose row 2 selection is `...use bespoke term`, the value here is written to every data row of that column in the generated manifest |
 | 7 | *(blank)* | — |
 | 8 | Interpreted Validation Rules | Reference only — may be incorporated in a future version |
 | 9 | Validation Rules | Reference only — may be incorporated in a future version |
@@ -130,16 +131,21 @@ The `all_manifest_builder_v1.0` sheet is laid out as follows:
 
 ### Row 2 Dropdown Options
 
+There is no `Exclude` option in the UI — leaving a column unset (`select option` or blank) has the same effect: it is silently left out of the generated manifest, with no error or blocking dialog.
+
+Columns where row 4 says `Mandatory` (or `WOSPI Mandatory`) get a restricted 3-option dropdown; all other columns get the full 5-option dropdown (which includes the unset placeholder):
+
 | Selection | Header colour | Meaning |
 |-----------|--------------|---------|
-| `Include and visible (mandatory)` | 🟩 Deep teal (white text) | Partner must fill this in |
-| `Include, visible and mandatory` | 🟩 Deep teal (white text) | Partner must fill this in (alternate wording) |
-| `Include, visible and optional` | 🫧 Soft sage (charcoal text) | Partner may fill this in |
-| `Include and visible` | 🟩 Teal or 🫧 Sage | If row 4 = Mandatory or WOSPI Mandatory → teal; otherwise → sage |
-| `Include and hidden` | ⬜ White | Column included but hidden from partner; header prefixed `[ignore]` |
-| `Exclude` | *(not included)* | Column not in the generated manifest at all |
+| `select option` | *(not included)* | Unset — column silently excluded from the manifest. Only offered on non-system-mandatory columns |
+| `Mandatory, visible` | 🟩 Forest green (white text) | Partner must fill this in |
+| `Optional, visible` | 🔵 Very light blue (dark blue text) | Partner may fill this in |
+| `Mandatory, hide, use NOT_COLLECTED` | ⬜ White | Hidden from partner; every data row pre-filled with `NOT_COLLECTED`. Offered on system-mandatory columns |
+| `Include, hide, use NOT_COLLECTED` | ⬜ White | Hidden from partner; every data row pre-filled with `NOT_COLLECTED`. Offered on non-system-mandatory columns |
+| `Mandatory, hide, use a bespoke term` | ⬜ White | Hidden from partner; every data row pre-filled with the value from row 6. Offered on system-mandatory columns |
+| `Include, hide, use bespoke term` | ⬜ White | Hidden from partner; every data row pre-filled with the value from row 6. Offered on non-system-mandatory columns |
 
-> **Unset columns:** If a cell in row 2 is blank or still says `select option`, the script will block generation and list the columns that need a selection.
+> **Bespoke term with no row 6 value:** If a `...use bespoke term` option is selected but row 6 is empty for that column, the manifest is still generated — but a warning is added as a cell comment on that column's header asking the curator to either fill in row 6 and regenerate, or populate the column manually.
 
 ---
 
@@ -168,13 +174,13 @@ Running **▶ Run generator** triggers a 17-step pipeline:
 4. **Live SOP fetched** — opens the master SOP Google Doc and parses all bullet-point field descriptions. Generation is cancelled with an error if this fails (see [Error Messages](#error-messages))
 5. **Remaining builder rows read** — rows 3–4 read (rows 1–2 already read for the duplicate check)
 6. **Data Validation tab read** — dropdown lists loaded for applicable columns
-7. **Column list built** — each column classified as mandatory/optional/hidden/excluded based on row 2 (with row 4 as fallback for ambiguous selections)
-8. **Missing selections checked** — if any columns have no selection, generation is blocked and the missing columns are listed
+7. **Column list built** — each column classified as mandatory/optional/hidden_nc/hidden_bespoke based on row 2; unset or unrecognised selections are silently skipped (no blocking). Hidden columns get a `prefillVal` — either `NOT_COLLECTED` or the bespoke value from row 6
+8. **Empty-selection check** — generation only stops if *no* columns at all are selected
 9. **Column ordering applied** — columns with order numbers in row 3 are placed first; remaining columns follow in natural order
 10. **Manifest Google Sheet created** — named `ToL_Manifest_[ProjectName]_[YYYY-MM-DD]`, moved to shared folder
 11. **Header row written** — colour-coded, bold, text-wrapped, 60px tall, frozen. Hidden columns prefixed `[ignore]`
-12. **Data rows formatted** — 96 rows with light column tints, grey grid borders, dropdowns, date validation, amber missing-value highlight
-13. **Hidden columns hidden** — all `Include and hidden` columns hidden in the sheet
+12. **Data rows formatted** — 1920 rows with light column tints, grey grid borders, dropdowns, date validation, prefill values for hidden columns, amber missing-value highlight (mandatory columns without a prefill only)
+13. **Hidden columns hidden** — all `hidden_nc`/`hidden_bespoke` columns hidden in the sheet
 14. **Partner SOP tab added** — green tab inside the manifest sheet
 15. **Two SOP Google Docs created** — internal and partner-facing, both moved to shared folder
 16. **Catalogue row appended** — new row added to the builder sheet catalogue section
@@ -185,18 +191,19 @@ Running **▶ Run generator** triggers a 17-step pipeline:
 ## Generated Manifest Format
 
 ### Header row
-- **Deep forest teal (`#355C4B`) background, white text** — mandatory columns
-- **Soft sage (`#C8DDD3`) background, dark charcoal text** — optional columns
+- **Forest green (`#2E6F40`) background, white text** — mandatory columns
+- **Very light blue (`#DCEEFB`) background, dark blue text** — optional columns
 - **White background, dark charcoal text** — hidden columns (prefixed `[ignore]`, column hidden in sheet)
 - Text wraps; row height 60px to accommodate long field names
 - Each header cell has a **cell comment** (small triangle in corner) containing the full SOP description for that field — hover to read
 
-### Data rows (rows 2–97)
-- Very pale moss tint — mandatory and optional columns
+### Data rows (rows 2–1921)
+- White, untinted — mandatory and optional columns
 - Off-white — hidden columns
 - Grey grid borders on all cells
 - **Dropdown validation** on fields with controlled vocabularies (e.g. `ORGANISM_PART`, `LIFESTAGE`, `SEX`, `GAL`)
-- **Missing mandatory value highlight** — blank cells in mandatory columns are highlighted **soft amber** (`#F3D27A`), making missing required values immediately visible to data curators without being alarming
+- **Prefill values** — hidden columns are pre-filled in every data row with either `NOT_COLLECTED` or the bespoke value from builder sheet row 6, so partners never need to touch them
+- **Missing mandatory value highlight** — blank cells in mandatory columns *without* a prefill are highlighted **light green** (`#C8E6C9`), making missing required values immediately visible to data curators without being alarming
 - **Date validation** on `DATE_OF_COLLECTION`:
   - Cells pre-formatted as Text so Excel doesn't corrupt `YYYY-MM-DD` on `.xlsx` download
   - **Muted coral** (`#D97C6C`) highlight if a non-empty cell doesn't match `YYYY-MM-DD` pattern (survives `.xlsx` export; a rejection rule would not)
@@ -215,7 +222,7 @@ Two Google Docs are created per run, both saved to the shared output folder:
 ### Internal SOP (`ToL_Internal_SOP_[name]_[date]`)
 - All columns listed including hidden ones
 - Hidden column entries are greyed and marked `[HIDDEN]` in the column letter prefix (e.g. `B [HIDDEN]. SYMBIONT: …`)
-- Field names highlighted in their manifest colour (teal/sage/grey)
+- Field names highlighted in their manifest colour (green/light blue/grey)
 
 ### Partner SOP (`ToL_Partner_SOP_[name]_[date]`)
 - Hidden columns omitted entirely
@@ -234,7 +241,7 @@ Both documents follow the format of the master SOP:
 The catalogue section (rows 13+ of the builder sheet) records every manifest that has been generated. Each row contains:
 
 - **Col A** — manifest name and version (bold, yellow background when newly added, with a cell note for SM review)
-- **Cols B+** — full selection string for included columns (e.g. `Include, visible and mandatory`), empty for excluded columns; cells colour-coded to match the manifest headers (teal/sage/white for included, light grey for excluded)
+- **Cols B+** — full selection string for included columns (e.g. `Mandatory, visible`), empty for excluded columns; cells colour-coded to match the manifest headers (green/light blue/white for included, light grey for excluded)
 - **Row formatting** — font size 8, text wrap enabled, solid border around the full row
 
 > **Backwards compatibility:** Older catalogue rows using `TRUE`/`FALSE` checkboxes are still understood by both the catalogue checker and the load-from-catalogue function.
@@ -251,7 +258,7 @@ The catalogue section (rows 13+ of the builder sheet) records every manifest tha
 2. DToL V2.6 WOSPI V1.0  (33 mandatory, 8 optional, 3 hidden)
 3. BIOSCAN sent  (28 mandatory, 5 optional, 2 hidden)
 ```
-The user types a number and row 2 is pre-populated with the exact selections from that entry. Columns not in the catalogue entry are set to `Exclude`. The user can then adjust selections before generating.
+The user types a number and row 2 is pre-populated with the exact selections from that entry. Columns not in the catalogue entry are set to `select option` (unset). The user can then adjust selections before generating.
 
 > **Future enhancement (Option B):** A searchable HTML sidebar (using Google Apps Script's `HtmlService`) could replace the text prompt for better usability as the catalogue grows. See the comment block above `loadFromCatalogue()` in the script for implementation notes.
 
@@ -268,8 +275,7 @@ The user types a number and row 2 is pre-populated with the exact selections fro
 | `⚠️ SOP Sync Failed — Manifest NOT generated` | The master SOP Google Doc could not be opened | Check that the Doc (ID in `SOP_DOC_ID`) is shared with the account running the script. See full error for the specific reason |
 | `The SOP file appears to be a .docx file` | `SOP_DOC_ID` points to a `.docx` file in Drive rather than a native Google Doc | One-time fix: open the file in Drive → **File → Save as Google Docs** → copy the new Doc ID from the URL → update `SOP_DOC_ID` in the script. `DocumentApp` cannot open `.docx` files even if you have edit access |
 | `SOP Doc opened but only N column description(s) parsed` | The SOP Doc structure has changed or the wrong Doc ID is set | Check the Doc ID in `SOP_DOC_ID` and verify the Doc contains bullet-point field descriptions in the expected format (`FIELDNAME: description`) |
-| `⚠️ Please fill in row 2 for these columns before generating` | One or more columns have no selection in row 2 | Use the dropdown in each listed cell to select an option. Unset cells and `select option` are treated as missing |
-| `No columns selected. Please update row 2` | All columns are set to `Exclude` | At least one column must be included |
+| `No columns are selected in row 2. Please choose an option for at least one column` | All columns are unset (`select option` or blank) | Select an option for at least one column in row 2. Individually unset columns no longer block generation — they are silently excluded |
 | `No catalogue entries found` | The catalogue section is empty or starts below `CATALOGUE_DATA_START` | Check the builder sheet and update `CATALOGUE_DATA_START` if the section has moved |
 
 ### SOP sync failure in detail
@@ -352,9 +358,9 @@ To change where output files are saved:
 
 ## Updating Dropdown Options
 
-The row 2 dropdown options are defined in `BUILDER_DROPDOWN_OPTIONS`. If the wording needs to change:
-1. Update the array in the Constants section
-2. Update the corresponding trigger arrays (`ORANGE_TRIGGERS`, `BLUE_TRIGGER`, `HIDDEN_TRIGGER`, `EXCLUDE_TRIGGER`) to match the new lowercase versions
+The row 2 dropdown options are defined in `BUILDER_DROPDOWN_OPTIONS_MANDATORY` (3 options, offered on system-mandatory columns) and `BUILDER_DROPDOWN_OPTIONS_OPTIONAL` (5 options, offered on all other columns). If the wording needs to change:
+1. Update the two arrays in the Constants section
+2. Update the corresponding `SEL_*` trigger constants and the derived `HIDDEN_NC_TRIGGERS`/`HIDDEN_BESPOKE_TRIGGERS`/`ALL_HIDDEN_TRIGGERS` arrays to match the new lowercase versions
 3. Re-run the generator once — the updated dropdowns will be applied to row 2 automatically at the start of the next generation run
 
 ---
@@ -369,6 +375,8 @@ This script is maintained by the Tree of Life Sample Management team at the Well
 
 | Version | Date | Notes |
 |---------|------|-------|
+| 0.10 | 2026-06 | New colour palette: forest green mandatory headers, very light blue/dark blue text optional headers; mandatory/optional data cells now plain white (no tint); missing-mandatory highlight changed from amber to light green |
+| 0.9 | 2026-06 | New row 2 vocabulary (`Mandatory, visible` / `Optional, visible` / hide-and-prefill options); row 6 bespoke autopopulate values; unset selections no longer block generation (silently excluded); hidden columns auto-prefilled with `NOT_COLLECTED` or bespoke term; `MANIFEST_DATA_ROWS` increased to 1920 |
 | 0.8 | 2026-06 | Fix date CF false positives (remove TEXT() wrapper); auto duplicate-check before generation; white text on mandatory catalogue/SOP cells |
 | 0.7 | 2026-06 | Teal/sage colour palette; amber missing-value highlight; muted coral date error; separate dark/light header text colours |
 | 0.6 | 2026-05 | Sync SOP comments to builder headers (new menu item); catalogue row border, font-8, wrap, light grey excluded cells |
